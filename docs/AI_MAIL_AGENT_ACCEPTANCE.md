@@ -17,7 +17,7 @@
 
 ## 2026-07-15 初始生产验收
 
-- Worker 版本：`9b4a364a-6ecd-4db9-af30-9a5adb154342`。
+- 初始投递验收 Worker 版本：`9b4a364a-6ecd-4db9-af30-9a5adb154342`；隐私收口后的当前版本：`41104c95-dd22-4668-bdeb-336c700d6cf0`。
 - 自动化测试：Vitest 4 个文件，40/40 通过。
 - 前端：Vite release 构建通过，2,484 个模块完成转换。
 - Wrangler：生产 dry-run 通过；D1、KV、R2、Workers AI、Assets、Send Email binding 均解析成功。
@@ -39,6 +39,7 @@
 - `.env.local` 已被 Git 忽略；当前跟踪文件未发现私钥、API Key 或 Token 值。
 - `pnpm audit` 因上游 npm audit 旧端点返回 HTTP 410 未能执行；GitHub Dependabot 在该仓库未启用。连续验收期间应启用可用的依赖漏洞数据源。
 - 目标邮箱地址曾出现在已推送历史提交中；当前版本已从跟踪配置和文档移除并改用 Secret。彻底清除历史需要单独批准历史重写与强制推送。
+- 隐私收口发布后复核：Secret 名存在；生成的 Wrangler 临时文件已删除；Send Email binding 仍限制到单一脱敏目标；D1 保持 1 次成功运行、0 个重复窗口、1 次成功投递、4 个来源全部属于验收邮箱；基础邮件仍为 3 个活跃邮箱与 5 封有效邮件。
 
 ## 连续 7 天记录
 
