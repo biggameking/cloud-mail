@@ -88,6 +88,8 @@ function initTinyMCE() {
 function initEditor() {
   window.tinymce.init({
     selector: `#${props.editorId}`,
+	base_url: '/tinymce',
+	suffix: '.min',
     statusbar: false,
     height: "100%",
     auto_focus: true,
