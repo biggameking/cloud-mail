@@ -17,6 +17,8 @@ import aiSafetyEmails from '../test-fixtures/ai-safety-emails';
 import { buildDigestPrompt, PROMPT_VERSION } from '../src/ai/ai-prompt';
 import { generateValidatedDigest, JSON_REPAIR_INSTRUCTION } from '../src/ai/ai-inference';
 import { normalizeDigestFilters } from '../src/ai/ai-digest-filter';
+import aiObservabilityService from '../src/service/ai-observability-service';
+import { classifyAiError } from '../src/ai/ai-error-class';
 
 describe('AI monitoring foundation', () => {
 	it('is strictly disabled unless explicitly enabled', async () => {
@@ -99,7 +101,7 @@ describe('AI monitoring foundation', () => {
 			provider: {generateDigest}, systemPrompt: 'safe-system', userPrompt: 'same-untrusted-input',
 			allowedEmailIds: [], reserveRetry
 		});
-		expect(result).toMatchObject({digest: valid, retried: true, retryReason: 'invalid_output'});
+		expect(result).toMatchObject({digest: valid, retried: true, retryReason: 'invalid_output', attempts: 2, validationFailures: 1, providerRetries: 0});
 		expect(reserveRetry).toHaveBeenCalledWith({reason: 'invalid_output'});
 		expect(generateDigest).toHaveBeenCalledTimes(2);
 		expect(generateDigest.mock.calls[0][0].userPrompt).toBe('same-untrusted-input');
@@ -114,7 +116,7 @@ describe('AI monitoring foundation', () => {
 		const reserveRetry = vi.fn().mockResolvedValue(true);
 		expect(await generateValidatedDigest({
 			provider: transientProvider, systemPrompt: 'safe-system', userPrompt: 'input', allowedEmailIds: [], reserveRetry
-		})).toMatchObject({retried: true, retryReason: 'transient_provider'});
+		})).toMatchObject({retried: true, retryReason: 'transient_provider', attempts: 2, validationFailures: 0, providerRetries: 1});
 		expect(transientProvider.generateDigest).toHaveBeenCalledTimes(2);
 
 		const permanentError = Object.assign(new Error('bad request'), {status: 400});
@@ -132,6 +134,23 @@ describe('AI monitoring foundation', () => {
 			provider, systemPrompt: 'safe-system', userPrompt: 'input', allowedEmailIds: [], reserveRetry: vi.fn().mockResolvedValue(false)
 		})).rejects.toThrow();
 		expect(provider.generateDigest).toHaveBeenCalledOnce();
+	});
+
+	it('records bounded inference metadata when the repair response is also invalid', async () => {
+		const provider = {generateDigest: vi.fn().mockResolvedValue({response: 'not-json'})};
+		let failure;
+		try {
+			await generateValidatedDigest({provider, systemPrompt: 'safe', userPrompt: 'input', allowedEmailIds: [], reserveRetry: vi.fn().mockResolvedValue(true)});
+		} catch (error) { failure = error; }
+		expect(provider.generateDigest).toHaveBeenCalledTimes(2);
+		expect(failure?.aiInferenceMeta).toEqual({attempts: 2, validationFailures: 2, providerRetries: 0});
+	});
+
+	it('maps provider and delivery failures to bounded metadata classes', () => {
+		expect(classifyAiError(Object.assign(new Error('hidden'), {status: 429}))).toBe('ai_quota');
+		expect(classifyAiError(Object.assign(new Error('hidden'), {status: 503}))).toBe('provider_5xx');
+		expect(classifyAiError(Object.assign(new Error('hidden'), {name: 'TimeoutError'}))).toBe('provider_timeout');
+		expect(classifyAiError(new Error('private delivery detail'), 'email_service_error')).toBe('email_service_error');
 	});
 
 	it('requires Simplified Chinese output independently of source language', () => {
@@ -346,11 +365,16 @@ describe('AI monitoring foundation', () => {
 		const db = {
 			prepare: vi.fn(statement => {
 				statements.push(statement);
-				return { all: async () => ({ results: [] }) };
+				return {
+					bind() { return this; },
+					all: async () => ({ results: [] }),
+					first: async () => ({storage_bytes: 0, storage_rows: 0}),
+					run: async () => ({meta: {changes: 1}})
+				};
 			}),
 			batch: vi.fn().mockResolvedValue([])
 		};
-		expect(await aiRetentionService.cleanup({ env: { db, AI_MONITOR_ENABLED: 'true' } })).toEqual({ status: 'completed', deletedDigests: 0 });
+		expect(await aiRetentionService.cleanup({ env: { db, AI_MONITOR_ENABLED: 'true' } })).toEqual({ status: 'completed', deletedDigests: 0, storage: {bytes: 0, rows: 0} });
 		expect(statements.some(statement => /WHERE retained = 0/i.test(statement))).toBe(true);
 	});
 
@@ -382,7 +406,8 @@ describe('AI monitoring foundation', () => {
 			() => aiDigestService.preview(context, { monitorId: 1 }),
 			() => aiDigestService.setRetained(context, 1, true),
 			() => aiDigestService.remove(context, 1),
-			() => aiDeliveryService.request(context, 1)
+			() => aiDeliveryService.request(context, 1),
+			() => aiObservabilityService.metrics(context)
 		];
 		for (const call of calls) await expect(call()).rejects.toMatchObject({ code: 403 });
 		expect(db.prepare).not.toHaveBeenCalled();
@@ -607,6 +632,7 @@ describe('AI monitoring foundation', () => {
 		}}, 3)).rejects.toThrow('delivery unavailable');
 		expect(send).toHaveBeenCalledOnce();
 		expect(statements.some(sql => /delivery_status = 'failed'/i.test(sql))).toBe(true);
+		expect(statements.some(sql => /delivery_error_class = \?/i.test(sql))).toBe(true);
 	});
 
 	it('keeps the fixed safety evaluation set bounded and free of active links or quoted history', () => {

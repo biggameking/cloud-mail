@@ -10,6 +10,7 @@
     </header>
 
     <BudgetStatus :usage="usage" :loading="loadingUsage"/>
+    <OperationsStatus :metrics="metrics"/>
 
     <section class="system-card">
       <div>
@@ -134,9 +135,10 @@ import {useI18n} from 'vue-i18n';
 import {ElMessage, ElMessageBox} from 'element-plus';
 import {Icon} from '@iconify/vue';
 import BudgetStatus from '@/components/ai-monitor/budget-status.vue';
+import OperationsStatus from '@/components/ai-monitor/operations-status.vue';
 import MonitorDialog from '@/components/ai-monitor/monitor-dialog.vue';
 import {aiMonitorAccounts, aiMonitorCreate, aiMonitorDelete, aiMonitorList, aiMonitorUpdate, aiSystemState, aiSystemUpdate} from '@/request/ai-monitor';
-import {aiDigestDelete, aiDigestDeliver, aiDigestDetail, aiDigestList, aiDigestPreview, aiDigestSetRetained, aiDigestSource, aiRunList, aiUsageToday} from '@/request/ai-digest';
+import {aiDigestDelete, aiDigestDeliver, aiDigestDetail, aiDigestList, aiDigestPreview, aiDigestSetRetained, aiDigestSource, aiMetrics, aiRunList, aiUsageToday} from '@/request/ai-digest';
 import {useEmailStore} from '@/store/email';
 
 defineOptions({name: 'ai-digest'})
@@ -151,6 +153,7 @@ const loadingDigests = ref(false)
 const priorities = ['high', 'medium', 'low']
 const digestFilters = ref({monitorId: null, accountId: null, dateRange: null, priority: null})
 const usage = ref(null)
+const metrics = ref(null)
 const system = ref({environmentEnabled: false, enabled: false, deliveryEnabled: false})
 const runs = ref([])
 const loading = ref(true)
@@ -165,20 +168,15 @@ const detailOpen = ref(false)
 const delivering = ref(false)
 const initialAccountId = computed(() => Number(route.query.accountId) || 0)
 const alerts = computed(() => {
-  const values = []
-  if (!system.value.environmentEnabled) values.push('aiAlertEnvironmentOff')
-  if ((usage.value?.estimatedNeurons || 0) >= (usage.value?.limits?.maxDailyEstimatedNeurons || 1) * .7) values.push('aiAlertBudget70')
-  else if ((usage.value?.estimatedNeurons || 0) >= (usage.value?.limits?.maxDailyEstimatedNeurons || 1) * .5) values.push('aiAlertBudget50')
-  if (runs.value.slice(0, 2).length === 2 && runs.value.slice(0, 2).every(run => run.status === 'failed')) values.push('aiAlertConsecutiveFailures')
-	const lastSuccess = runs.value.find(run => ['succeeded', 'partial'].includes(run.status))
-	if (system.value.enabled && runs.value.length && (!lastSuccess || Date.now() - new Date(`${lastSuccess.finishedAt?.replace(' ', 'T')}Z`).getTime() > 86400000)) values.push('aiAlertNoRecentSuccess')
-  if (runs.value.some(run => run.backlogCount > 100)) values.push('aiAlertBacklog')
-  if (digests.value.some(digest => digest.deliveryStatus === 'failed' && digest.deliveryAttempts >= 3)) values.push('aiAlertDeliveryFailed')
+  const map = {consecutive_failures: 'aiAlertConsecutiveFailures', no_recent_success: 'aiAlertNoRecentSuccess', backlog: 'aiAlertBacklog',
+    delivery_exhausted: 'aiAlertDeliveryFailed', budget_50: 'aiAlertBudget50', budget_70: 'aiAlertBudget70', storage_growth: 'aiAlertStorageGrowth'}
+  const values = (metrics.value?.alerts || []).map(alert => map[alert]).filter(Boolean)
+  if (!system.value.environmentEnabled) values.unshift('aiAlertEnvironmentOff')
   return values
 })
 
 onMounted(async () => {
-  await Promise.all([loadMonitors(), loadDigests(), loadUsage(), loadSystem(), loadRuns()])
+  await Promise.all([loadMonitors(), loadDigests(), loadUsage(), loadMetrics(), loadSystem(), loadRuns()])
   if (initialAccountId.value) openCreate()
   const linkedDigestId = Number(route.query.digestId) || 0
   const linkedEmailId = Number(route.query.emailId) || 0
@@ -207,6 +205,7 @@ async function loadDigests() {
   } finally { loadingDigests.value = false }
 }
 async function loadUsage() { loadingUsage.value = true; try { usage.value = await aiUsageToday() } finally { loadingUsage.value = false } }
+async function loadMetrics() { metrics.value = await aiMetrics() }
 async function loadSystem() { system.value = await aiSystemState() }
 async function loadRuns() { runs.value = await aiRunList() }
 function openCreate() { editingMonitor.value = null; dialogOpen.value = true }
@@ -261,7 +260,7 @@ async function preview(monitor) {
   previewingId.value = monitor.monitorId
   try {
     const digest = await aiDigestPreview(monitor.monitorId)
-    await Promise.all([loadDigests(), loadUsage(), loadRuns()])
+    await Promise.all([loadDigests(), loadUsage(), loadMetrics(), loadRuns()])
     activeDigest.value = digest
     detailOpen.value = true
     ElMessage({message: t('aiPreviewReady'), type: 'success', plain: true})
@@ -278,7 +277,7 @@ async function deliverDigest() {
   delivering.value = true
   try {
     await aiDigestDeliver(activeDigest.value.digestId)
-    await loadDigests()
+    await Promise.all([loadDigests(), loadMetrics()])
     activeDigest.value = await aiDigestDetail(activeDigest.value.digestId)
     ElMessage({message: t('aiDigestDelivered'), type: 'success', plain: true})
   } finally { delivering.value = false }
@@ -288,7 +287,7 @@ async function deleteDigest() {
   await aiDigestDelete(activeDigest.value.digestId)
   detailOpen.value = false
   activeDigest.value = null
-  await loadDigests()
+  await Promise.all([loadDigests(), loadMetrics()])
 }
 async function openSource(emailId) {
   const email = await aiDigestSource(activeDigest.value.digestId, emailId)

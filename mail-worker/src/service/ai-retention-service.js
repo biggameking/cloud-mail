@@ -1,4 +1,5 @@
 import { getAiConfig } from '../ai/ai-config';
+import aiObservabilityService from './ai-observability-service';
 
 const aiRetentionService = {
 	async cleanup(c) {
@@ -23,7 +24,8 @@ const aiRetentionService = {
 				WHERE d.digest_id IS NULL AND r.finished_at < datetime('now', '-90 days') LIMIT 500
 			)`)
 		]);
-		return { status: 'completed', deletedDigests: ids.length };
+		const storage = await aiObservabilityService.snapshot(c);
+		return { status: 'completed', deletedDigests: ids.length, storage };
 	}
 };
 

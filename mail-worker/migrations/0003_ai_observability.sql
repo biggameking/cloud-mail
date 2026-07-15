@@ -1,0 +1,12 @@
+ALTER TABLE ai_digest_run ADD COLUMN inference_attempts INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE ai_digest_run ADD COLUMN validation_failure_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE ai_digest_run ADD COLUMN provider_retry_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE ai_digest ADD COLUMN delivery_error_class TEXT NOT NULL DEFAULT '';
+
+CREATE TABLE IF NOT EXISTS ai_ops_daily (
+  snapshot_date TEXT PRIMARY KEY,
+  storage_bytes INTEGER NOT NULL DEFAULT 0,
+  storage_rows INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

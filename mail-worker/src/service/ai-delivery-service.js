@@ -1,6 +1,7 @@
 import { t } from '../i18n/i18n';
 import BizError from '../error/biz-error';
 import aiMonitorService, { assertAdminAiAccess, VERIFIED_DESTINATION_KEY } from './ai-monitor-service';
+import { classifyAiError } from '../ai/ai-error-class';
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, character => ({
 	'&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
@@ -68,11 +69,12 @@ const aiDeliveryService = {
 				text: rendered.text,
 				headers: { 'X-CloudMail-Digest-Id': String(digest.digest_id) }
 			});
-			await c.env.db.prepare(`UPDATE ai_digest SET delivery_status = 'sent', delivered_at = CURRENT_TIMESTAMP WHERE digest_id = ?`)
+			await c.env.db.prepare(`UPDATE ai_digest SET delivery_status = 'sent', delivery_error_class = '', delivered_at = CURRENT_TIMESTAMP WHERE digest_id = ?`)
 				.bind(digestId).run();
 			return { status: 'sent' };
 		} catch (error) {
-			await c.env.db.prepare(`UPDATE ai_digest SET delivery_status = 'failed' WHERE digest_id = ?`).bind(digestId).run();
+			await c.env.db.prepare(`UPDATE ai_digest SET delivery_status = 'failed', delivery_error_class = ? WHERE digest_id = ?`)
+				.bind(classifyAiError(error, 'email_service_error'), digestId).run();
 			throw error;
 		}
 	},

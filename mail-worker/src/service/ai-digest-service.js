@@ -7,6 +7,7 @@ import { checkAiBudget, estimateNeurons, estimateTokens } from '../ai/ai-budget'
 import WorkersAiProvider from '../ai/workers-ai-provider';
 import { generateValidatedDigest } from '../ai/ai-inference';
 import { normalizeDigestFilters } from '../ai/ai-digest-filter';
+import { classifyAiError } from '../ai/ai-error-class';
 import { t } from '../i18n/i18n';
 
 const todayUtc = () => new Date().toISOString().slice(0, 10);
@@ -346,15 +347,20 @@ const aiDigestService = {
 				...digest.items.map(item => c.env.db.prepare(`INSERT INTO ai_digest_source (
 					digest_id, email_id, priority, category, summary, action_json
 				) VALUES (?, ?, ?, ?, ?, ?)`).bind(digestId, item.emailId, item.priority, item.category, item.summary, JSON.stringify(item.actions))),
-				c.env.db.prepare(`UPDATE ai_digest_run SET status = ?, input_tokens = ?, output_tokens = ?, duration_ms = ?, finished_at = CURRENT_TIMESTAMP
-					WHERE run_id = ?`).bind(backlogCount ? 'partial' : 'succeeded', inputTokens, outputTokens, Date.now() - startedAt, runId),
+				c.env.db.prepare(`UPDATE ai_digest_run SET status = ?, input_tokens = ?, output_tokens = ?, duration_ms = ?,
+					inference_attempts = ?, validation_failure_count = ?, provider_retry_count = ?, finished_at = CURRENT_TIMESTAMP
+					WHERE run_id = ?`).bind(backlogCount ? 'partial' : 'succeeded', inputTokens, outputTokens, Date.now() - startedAt,
+					inference.attempts, inference.validationFailures, inference.providerRetries, runId),
 				...(options.advanceCursor ? [c.env.db.prepare(`UPDATE ai_monitor SET last_processed_email_id = ?, updated_at = CURRENT_TIMESTAMP
 					WHERE monitor_id = ?`).bind(lastEmailId, monitor.monitorId)] : [])
 			]);
 			return { status: backlogCount ? 'partial' : 'succeeded', digestId, runId, lastEmailId, backlogCount };
 		} catch (error) {
-			await c.env.db.prepare(`UPDATE ai_digest_run SET status = 'failed', error_class = ?, duration_ms = ?, finished_at = CURRENT_TIMESTAMP WHERE run_id = ?`)
-				.bind(safeErrorClass(error), Date.now() - startedAt, runId).run();
+			const meta = error?.aiInferenceMeta || { attempts: 1, validationFailures: 0, providerRetries: 0 };
+			await c.env.db.prepare(`UPDATE ai_digest_run SET status = 'failed', error_class = ?, duration_ms = ?, inference_attempts = ?,
+				validation_failure_count = ?, provider_retry_count = ?, finished_at = CURRENT_TIMESTAMP WHERE run_id = ?`)
+				.bind(classifyAiError(error, safeErrorClass(error)), Date.now() - startedAt, meta.attempts,
+					meta.validationFailures, meta.providerRetries, runId).run();
 			throw error;
 		}
 	}

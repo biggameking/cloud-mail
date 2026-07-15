@@ -6,6 +6,7 @@ export const aiDigestSource = (digestId, emailId) => http.get(`/ai/digests/${dig
 export const aiDigestPreview = monitorId => http.post('/ai/digests/preview', {monitorId}, {timeout: 120000});
 export const aiDigestDeliver = digestId => http.post(`/ai/digests/${digestId}/deliver`);
 export const aiUsageToday = () => http.get('/ai/usage/today');
+export const aiMetrics = () => http.get('/ai/metrics');
 export const aiRunList = () => http.get('/ai/runs');
 export const aiDigestDelete = digestId => http.delete(`/ai/digests/${digestId}`);
 export const aiDigestSetRetained = (digestId, retained) => http.put(`/ai/digests/${digestId}/retained`, {retained});

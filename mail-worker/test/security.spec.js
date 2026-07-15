@@ -55,6 +55,7 @@ describe('production security baseline', () => {
 			['GET', '/api/ai/digests/1'],
 			['GET', '/api/ai/digests/1/source/1'],
 			['GET', '/api/ai/usage/today'],
+			['GET', '/api/ai/metrics'],
 			['POST', '/api/ai/digests/preview'],
 			['POST', '/api/ai/digests/1/deliver'],
 			['PUT', '/api/ai/digests/1/retained'],
