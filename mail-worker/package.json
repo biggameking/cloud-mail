@@ -6,7 +6,8 @@
 		"dev": "wrangler dev --config wrangler-dev.toml",
 		"test": "vitest run",
 		"test:deploy": "wrangler deploy --config wrangler-test.toml",
-		"deploy": "wrangler deploy",
+		"deploy": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/deploy-production.ps1",
+		"deploy:dry-run": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/deploy-production.ps1 -DryRun",
 		"start": "wrangler dev"
 	},
 	"devDependencies": {

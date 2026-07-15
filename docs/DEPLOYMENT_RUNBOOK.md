@@ -23,7 +23,7 @@ Create these resources in the Cloudflare account that owns `echoec.com`:
 - R2: `cloudmail-echoec-attachments`, binding `r2`
 - Custom Domain: `cloudmail.echoec.com`
 - Email Routing rule: catch-all `*@echoec.com` to Worker `cloudmail-echoec`
-- Verified forwarding destination: `xiealan555@gmail.com`
+- Verified forwarding destination: configured only in Cloudflare/D1; never record the address in Git
 
 Do not put secrets in `wrangler.toml`, D1, KV, screenshots, logs, or documentation. `jwt_secret` and `BOOTSTRAP_TOKEN` must be Wrangler secrets.
 
@@ -31,7 +31,8 @@ Do not put secrets in `wrangler.toml`, D1, KV, screenshots, logs, or documentati
 
 1. Authenticate Wrangler with the correct Cloudflare account. If Wrangler OAuth fails before producing an authorization code, create a user API token with a short expiry and resource scope limited to the owning account and `echoec.com`. Store it only in ignored `mail-worker/.env.local`; never paste it into chat or command history.
 2. Create D1, KV, and R2, then copy only their non-secret IDs/names into `mail-worker/wrangler.toml`.
-3. Set `jwt_secret` and `BOOTSTRAP_TOKEN` with `wrangler secret put`.
+3. Set `jwt_secret`, `BOOTSTRAP_TOKEN`, and `AI_DIGEST_DESTINATION_SECRET` with `wrangler secret put`.
+   Keep the same destination only in ignored `mail-worker/.env.local`; `pnpm run deploy` uses it to generate a temporary binding-restricted Wrangler file and deletes that file after deployment.
 4. Deploy with bootstrap enabled.
 5. `POST /api/bootstrap` once with `X-Bootstrap-Token` to initialize D1.
 6. Register `admin@echoec.com` once through `POST /api/register`, with the same bootstrap header and a user-chosen strong password.

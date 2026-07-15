@@ -39,7 +39,7 @@ Workers AI 通过 Wrangler 的 `ai` binding 使用，不需要也不允许配置
 - 摘要投递使用固定的 `send_email.destination_address`；API 请求不能指定目标地址。
 - 发送失败只更新 `delivery_status` 并最多重试 3 次，不会重新调用模型。
 
-正式启用前确认 `AI_DIGEST_DESTINATION` 与 `send_email.destination_address` 完全一致，且该地址已在 Cloudflare Email Routing 中验证。Cloudflare 官方说明：已验证目标地址可在包括 Free 在内的计划上通过 Workers binding 免费发送。
+正式启用前使用 `wrangler secret put AI_DIGEST_DESTINATION_SECRET` 配置唯一目标，并确认该地址已在 Cloudflare Email Routing 中验证。`send_email` binding 不在 Git 中记录地址，API 请求也不能覆盖 Secret。Cloudflare 官方说明：已验证目标地址可在包括 Free 在内的计划上通过 Workers binding 免费发送。
 
 启用步骤：
 

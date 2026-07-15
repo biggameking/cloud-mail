@@ -31,7 +31,7 @@ const aiDeliveryService = {
 		if (!system.environmentEnabled || !system.enabled || !system.deliveryEnabled) {
 			throw new BizError(t('aiDeliveryDisabled'), 409);
 		}
-		if (!c.env.ai_digest_email || !c.env.AI_DIGEST_DESTINATION) {
+		if (!c.env.ai_digest_email || !c.env.AI_DIGEST_DESTINATION_SECRET) {
 			throw new BizError(t('aiDeliveryUnavailable'), 503);
 		}
 		const digest = await c.env.db.prepare('SELECT delivery_status, delivery_attempts FROM ai_digest WHERE digest_id = ?')
@@ -48,7 +48,7 @@ const aiDeliveryService = {
 	},
 
 	async deliver(c, digestId) {
-		if (!c.env.ai_digest_email || !c.env.AI_DIGEST_DESTINATION) return { status: 'unconfigured' };
+		if (!c.env.ai_digest_email || !c.env.AI_DIGEST_DESTINATION_SECRET) return { status: 'unconfigured' };
 		const claim = await c.env.db.prepare(`UPDATE ai_digest SET delivery_status = 'sending', delivery_attempts = delivery_attempts + 1
 			WHERE digest_id = ? AND delivery_status IN ('pending', 'failed') AND delivery_attempts < 3`).bind(digestId).run();
 		if (!claim.meta.changes) return { status: 'not_claimed' };
@@ -57,7 +57,7 @@ const aiDeliveryService = {
 		try {
 			const rendered = renderDigestEmail(digest);
 			await c.env.ai_digest_email.send({
-				to: c.env.AI_DIGEST_DESTINATION,
+				to: c.env.AI_DIGEST_DESTINATION_SECRET,
 				from: { email: c.env.admin, name: 'Cloud Mail' },
 				subject: digest.title,
 				html: rendered.html,
@@ -74,7 +74,7 @@ const aiDeliveryService = {
 	},
 
 	async retryPending(c) {
-		if (!c.env.ai_digest_email || !c.env.AI_DIGEST_DESTINATION) return [];
+		if (!c.env.ai_digest_email || !c.env.AI_DIGEST_DESTINATION_SECRET) return [];
 		const { results } = await c.env.db.prepare(`SELECT digest_id FROM ai_digest
 			WHERE delivery_status IN ('pending', 'failed') AND delivery_attempts < 3 ORDER BY digest_id ASC LIMIT 10`).all();
 		const outcomes = [];

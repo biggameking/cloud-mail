@@ -153,7 +153,7 @@ describe('AI monitoring foundation', () => {
 		});
 		const send = vi.fn();
 		const context = {
-			env: { admin: 'admin@example.com', ai_digest_email: { send }, AI_DIGEST_DESTINATION: 'verified@example.com' },
+			env: { admin: 'admin@example.com', ai_digest_email: { send }, AI_DIGEST_DESTINATION_SECRET: 'verified@example.com' },
 			get: () => ({ userId: 1, email: 'admin@example.com' })
 		};
 
@@ -183,7 +183,7 @@ describe('AI monitoring foundation', () => {
 		const context = {
 			env: {
 				admin: 'admin@example.com', db, ai_digest_email: { send },
-				AI_DIGEST_DESTINATION: 'verified@example.com'
+				AI_DIGEST_DESTINATION_SECRET: 'verified@example.com'
 			},
 			get: () => ({ userId: 1, email: 'admin@example.com' })
 		};
@@ -296,7 +296,7 @@ describe('AI monitoring foundation', () => {
 		})};
 		const send = vi.fn().mockRejectedValue(new Error('delivery unavailable'));
 		await expect(aiDeliveryService.deliver({env: {
-			db, ai_digest_email: {send}, AI_DIGEST_DESTINATION: 'verified@example.com', admin: 'admin@example.com'
+			db, ai_digest_email: {send}, AI_DIGEST_DESTINATION_SECRET: 'verified@example.com', admin: 'admin@example.com'
 		}}, 3)).rejects.toThrow('delivery unavailable');
 		expect(send).toHaveBeenCalledOnce();
 		expect(statements.some(sql => /delivery_status = 'failed'/i.test(sql))).toBe(true);

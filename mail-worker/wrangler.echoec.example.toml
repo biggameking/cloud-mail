@@ -28,7 +28,6 @@ binding = "ai"
 
 [[send_email]]
 name = "ai_digest_email"
-destination_address = "verified@example.com"
 
 [assets]
 binding = "assets"
@@ -57,7 +56,6 @@ AI_MAX_DAILY_CALLS = "4"
 AI_MAX_DAILY_INPUT_TOKENS = "500000"
 AI_MAX_DAILY_OUTPUT_TOKENS = "20000"
 AI_MAX_DAILY_ESTIMATED_NEURONS = "7000"
-AI_DIGEST_DESTINATION = "verified@example.com"
 
 [build]
 command = "pnpm --prefix ../mail-vue install --frozen-lockfile && pnpm --prefix ../mail-vue run build"
