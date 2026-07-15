@@ -14,6 +14,7 @@ import aiSchedulerService from '../src/service/ai-scheduler-service';
 import aiRetentionService from '../src/service/ai-retention-service';
 import { localDateKey, nextDailyRun } from '../src/ai/ai-schedule';
 import aiSafetyEmails from '../test-fixtures/ai-safety-emails';
+import { buildDigestPrompt, PROMPT_VERSION } from '../src/ai/ai-prompt';
 
 describe('AI monitoring foundation', () => {
 	it('is strictly disabled unless explicitly enabled', async () => {
@@ -84,6 +85,17 @@ describe('AI monitoring foundation', () => {
 		const [, request] = run.mock.calls[0];
 		expect(request.response_format).toEqual({ type: 'json_object' });
 		expect(request.tools).toBeUndefined();
+	});
+
+	it('requires Simplified Chinese output independently of source language', () => {
+		const prompt = buildDigestPrompt({
+			language: 'zh-CN',
+			emails: [{ emailId: 7, subject: 'English subject', body: 'Please review the report.' }]
+		});
+		expect(PROMPT_VERSION).toBe('digest-v2-zh');
+		expect(prompt).toContain('输出语言必须为简体中文');
+		expect(prompt).toContain('即使原邮件是英文');
+		expect(prompt).toContain('"allowedEmailIds":[7]');
 	});
 
 	it('keeps the AI schema migration repeatable', async () => {

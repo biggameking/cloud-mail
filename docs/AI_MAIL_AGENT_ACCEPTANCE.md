@@ -23,7 +23,7 @@
 - Wrangler：生产 dry-run 通过；D1、KV、R2、Workers AI、Assets、Send Email binding 均解析成功。
 - HTTPS：200；HSTS、CSP、Permissions-Policy、Referrer-Policy、`nosniff` 均存在。
 - 监控范围：唯一验收规则只映射 `privacytest@echoec.com`。
-- AI 调用：1/4；估算输入 549/500,000 Tokens；估算 Neurons 44/7,000。
+- 初始 AI 调用：1 次；估算输入 549 Tokens；估算 Neurons 44。完成性审计后，观察期生产熔断已收紧为 2 次/日、500,000 输入 Tokens、20,000 输出 Tokens、5,000 Neurons。
 - 运行结果：`succeeded`；处理 4 封；积压 0；Prompt `digest-v1`。
 - 来源隔离：摘要 4 个来源全部属于 `privacytest@echoec.com`，无跨邮箱来源。
 - 投递：`sent`；尝试 1 次；投递不产生第二次模型调用。
@@ -45,6 +45,6 @@
 
 | 日期 | 成功/部分/失败 | 重复窗口 | 调用/Neurons | 投递 | 积压峰值 | 越权来源 | 正常收信抽检 | 结论 |
 |---|---:|---:|---:|---|---:|---:|---|---|
-| 2026-07-15 | 1/0/0 | 0 | 1 / 44 | sent | 0 | 0 | 通过 | 初始验收通过 |
+| 2026-07-15 | 1/0/0 | 0 | 1 / 44 | sent | 0 | 0 | 通过 | 初始验收通过；待验证中文 Prompt v2 |
 
 第 7 天只有在以下条件全部满足时才能判定整体完成：无越权来源、无敏感正文日志、无重复窗口、每日预算未越线、投递重试未耗尽、AI 故障不影响正常邮件主链路，并完成最终依赖漏洞审计或明确记录其外部阻塞。
