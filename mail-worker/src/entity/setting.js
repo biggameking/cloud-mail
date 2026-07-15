@@ -1,6 +1,6 @@
 import { sqliteTable, text, integer} from 'drizzle-orm/sqlite-core';
 export const setting = sqliteTable('setting', {
-	register: integer('register').default(0).notNull(),
+	register: integer('register').default(1).notNull(),
 	receive: integer('receive').default(0).notNull(),
 	title: text('title').default('').notNull(),
 	manyEmail: integer('many_email').default(0).notNull(),
@@ -51,6 +51,7 @@ export const setting = sqliteTable('setting', {
 	blackContent: text('black_content').default('').notNull(),
 	blackFrom: text('black_from').default('').notNull(),
 	aiCode: integer('ai_code').default(1).notNull(),
-	aiCodeFilter: text('ai_code_filter').default('').notNull()
+	aiCodeFilter: text('ai_code_filter').default('').notNull(),
+	adminAggregateInbox: integer('admin_aggregate_inbox').default(1).notNull()
 });
 export default setting

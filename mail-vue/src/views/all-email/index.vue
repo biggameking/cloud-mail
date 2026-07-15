@@ -284,6 +284,7 @@ function jumpContent(email) {
   emailStore.contentData.delType = 'physics'
   emailStore.contentData.showStar = false
   emailStore.contentData.showReply = false
+  emailStore.contentData.readOnly = false
   router.push({name: 'content'})
 }
 

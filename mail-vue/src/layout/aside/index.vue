@@ -11,6 +11,11 @@
           <Icon icon="hugeicons:mailbox-01" width="20" height="20" />
           <span class="menu-name" style="margin-left: 21px">{{$t('inbox')}}</span>
         </el-menu-item>
+        <el-menu-item v-if="isSuperAdmin" @click="openMailboxView" index="mailbox-view"
+                      :class="route.meta.name === 'email' && uiStore.accountShow ? 'choose-item' : ''">
+          <Icon icon="mynaui:user" width="20" height="20" />
+          <span class="menu-name" style="margin-left: 20px">{{$t('mailboxView')}}</span>
+        </el-menu-item>
         <el-menu-item @click="router.push({name: 'send'})" index="send" v-perm="'email:send'"
                       :class="route.meta.name === 'send' ? 'choose-item' : ''">
           <Icon icon="cil:send" width="20" height="20" />
@@ -74,9 +79,21 @@ import router from "@/router/index.js";
 import { useRoute } from "vue-router";
 import {Icon} from "@iconify/vue";
 import {useSettingStore} from "@/store/setting.js";
+import {useUserStore} from "@/store/user.js";
+import {useUiStore} from "@/store/ui.js";
+import {computed} from "vue";
 
 const settingStore = useSettingStore();
+const userStore = useUserStore();
+const uiStore = useUiStore();
 const route = useRoute();
+const isSuperAdmin = computed(() => userStore.user.type === 0)
+
+function openMailboxView() {
+  uiStore.accountShow = true
+  uiStore.asideShow = window.innerWidth > 1024
+  router.push({name: 'email'})
+}
 
 </script>
 

@@ -1,0 +1,3 @@
+Cloud Mail attachment acceptance fixture
+Reference: CLOUDMAIL-HTMLATT-20260715-1
+This file contains no credentials, personal data, links, or executable content.

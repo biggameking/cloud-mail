@@ -5,13 +5,15 @@ import userService from './user-service';
 import emailService from './email-service';
 import orm from '../entity/orm';
 import account from '../entity/account';
+import email from '../entity/email';
 import { and, asc, eq, gt, inArray, count, sql, ne, or, lt, desc } from 'drizzle-orm';
-import {accountConst, isDel, settingConst} from '../const/entity-const';
+import {accountConst, emailConst, isDel, settingConst} from '../const/entity-const';
 import settingService from './setting-service';
 import turnstileService from './turnstile-service';
 import roleService from './role-service';
 import { t } from '../i18n/i18n';
 import verifyRecordService from './verify-record-service';
+import {normalizeForwardingTarget} from '../utils/forwarding-utils';
 
 const accountService = {
 
@@ -50,11 +52,11 @@ const accountService = {
 		let accountRow = await this.selectByEmailIncludeDel(c, email);
 
 		if (accountRow && accountRow.isDel === isDel.DELETE) {
-			throw new BizError(t('isDelAccount'));
+			throw new BizError(t('isDelAccount'), 409);
 		}
 
 		if (accountRow) {
-			throw new BizError(t('isRegAccount'));
+			throw new BizError(t('isRegAccount'), 409);
 		}
 
 		const userRow = await userService.selectById(c, userId);
@@ -103,7 +105,7 @@ const accountService = {
 		return orm(c).select().from(account).where(sql`${account.email} COLLATE NOCASE = ${email}`).get();
 	},
 
-	list(c, params, userId) {
+	async list(c, params, userId) {
 
 		let { accountId, size, lastSort } = params;
 
@@ -123,7 +125,7 @@ const accountService = {
 			lastSort = 9999999999;
 		}
 
-		return orm(c).select().from(account).where(
+		const list = await orm(c).select().from(account).where(
 			and(
 				eq(account.userId, userId),
 				eq(account.isDel, isDel.NORMAL),
@@ -138,6 +140,26 @@ const accountService = {
 			.orderBy(desc(account.sort), asc(account.accountId))
 			.limit(size)
 			.all();
+		await this.addUnreadCounts(c, list);
+		return list;
+	},
+
+	async addUnreadCounts(c, list) {
+		const accountIds = list.map(item => item.accountId).filter(Boolean);
+		if (accountIds.length === 0) return list;
+		const counts = await orm(c).select({
+			accountId: email.accountId,
+			unreadCount: count(email.emailId)
+		}).from(email).where(and(
+			inArray(email.accountId, accountIds),
+			eq(email.type, emailConst.type.RECEIVE),
+			eq(email.unread, emailConst.unread.UNREAD),
+			eq(email.isDel, isDel.NORMAL),
+			ne(email.status, emailConst.status.SAVING)
+		)).groupBy(email.accountId).all();
+		const countMap = new Map(counts.map(item => [item.accountId, item.unreadCount]));
+		list.forEach(item => item.unreadCount = countMap.get(item.accountId) || 0);
+		return list;
 	},
 
 	async delete(c, params, userId) {
@@ -215,6 +237,31 @@ const accountService = {
 			throw new BizError(t('usernameLengthLimit'));
 		}
 		await orm(c).update(account).set({name}).where(and(eq(account.userId, userId),eq(account.accountId, accountId))).run();
+	},
+
+	async setForward(c, params, userId) {
+		const accountId = Number(params.accountId);
+		const enabled = params.enabled === true || params.enabled === 1;
+		const accountRow = await this.selectById(c, accountId);
+		const currentUser = await userService.selectById(c, userId);
+
+		if (!accountRow || (accountRow.userId !== userId && currentUser.email !== c.env.admin)) {
+			throw new BizError(t('noUserAccount'), 403);
+		}
+
+		let domains = c.env.domain;
+		if (typeof domains === 'string') domains = JSON.parse(domains);
+		const forwardEmail = normalizeForwardingTarget({
+			sourceEmail: accountRow.email,
+			targetEmail: params.forwardEmail,
+			managedDomains: domains,
+			enabled
+		});
+
+		await orm(c).update(account).set({
+			forwardEnabled: enabled ? 1 : 0,
+			forwardEmail: enabled ? forwardEmail : ''
+		}).where(eq(account.accountId, accountId)).run();
 	},
 
 	async allAccount(c, params) {

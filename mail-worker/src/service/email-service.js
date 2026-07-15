@@ -51,6 +51,9 @@ const emailService = {
 
 		if (isNaN(allReceive)) {
 			let accountRow = await accountService.selectById(c, accountId);
+			if (!accountRow || accountRow.userId !== userId) {
+				throw new BizError(t('invalidMailboxAccount'), 404);
+			}
 			allReceive = accountRow.allReceive;
 		}
 
@@ -706,6 +709,9 @@ const emailService = {
 
 		if (isNaN(allReceive)) {
 			let accountRow = await accountService.selectById(c, accountId);
+			if (!accountRow || accountRow.userId !== userId) {
+				throw new BizError(t('invalidMailboxAccount'), 404);
+			}
 			allReceive = accountRow.allReceive;
 		}
 

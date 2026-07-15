@@ -2,6 +2,7 @@
   <div class="email-container">
     <div class="header-actions">
       <el-checkbox
+          v-if="!readOnly"
           v-model="checkAll"
           :indeterminate="isIndeterminate"
           :disabled="!emailList.length || loading"
@@ -12,11 +13,9 @@
 
         <slot name="first"></slot>
         <Icon class="icon reload" icon="ion:reload" width="18" height="18" @click="refresh"/>
-        <Icon v-perm="'email:delete'" class="icon delete" icon="uiw:delete" width="16" height="16"
-              v-if="getSelectedMailsIds().length > 0"
+        <Icon v-if="!readOnly && getSelectedMailsIds().length > 0" v-perm="'email:delete'" class="icon delete" icon="uiw:delete" width="16" height="16"
               @click="handleDelete"/>
-        <Icon v-perm="'email:delete'" class="icon delete" icon="fluent:mail-read-20-regular" width="21" height="21"
-              v-if="getSelectedMailsIds().length > 0 && showUnread"
+        <Icon v-if="!readOnly && getSelectedMailsIds().length > 0 && showUnread" v-perm="'email:delete'" class="icon delete" icon="fluent:mail-read-20-regular" width="21" height="21"
               @click="handleRead"/>
       </div>
 
@@ -38,7 +37,7 @@
                         :key="keyCount"
         >
           <template #default="{ data: item, index }" >
-            <div :class="'email-row ' + props.type"
+            <div :class="['email-row', props.type, {'read-only-row': readOnly}]"
                  :data-checked="item.checked"
                  @click="jumpDetails(item)"
                  v-if="!item.expand"
@@ -47,6 +46,7 @@
                  :style="item.rightChecked ? 'background: #FDF6EC' : ''"
             >
               <el-checkbox :class=" props.type === 'all-email' ? 'all-email-checkbox' : 'checkbox'"
+                           v-if="!readOnly"
                            v-model="item.checked" @click.stop></el-checkbox>
               <div @click.stop="starChange(item)" class="pc-star" v-if="showStar">
                 <Icon v-if="item.isStar" icon="fluent-color:star-16" width="20" height="20"/>
@@ -142,6 +142,7 @@
       </div>
     </div>
     <el-dropdown
+        v-if="!readOnly"
         ref="dropdownRef"
         @visible-change="visibleChange"
         :virtual-ref="triggerRef"
@@ -292,6 +293,10 @@ const props = defineProps({
     default: true
   },
   showUnread: {
+    type: Boolean,
+    default: false
+  },
+  readOnly: {
     type: Boolean,
     default: false
   }
@@ -507,6 +512,10 @@ function visibleChange(e) {
 }
 
 const handleContextmenu = (event, email) => {
+
+  if (props.readOnly) {
+    return
+  }
 
   if (props.type === 'draft') {
     return
@@ -1004,6 +1013,9 @@ function loadData() {
     @media (max-width: 1366px) {
       height: 132px;
     }
+  }
+  &.read-only-row {
+    padding-left: 30px;
   }
   .user-info {
     display: flex;

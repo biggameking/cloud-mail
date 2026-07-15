@@ -2,7 +2,7 @@
   <div class="box">
     <div class="header-actions">
       <Icon class="icon" icon="material-symbols-light:arrow-back-ios-new" width="20" height="20" @click="handleBack"/>
-      <Icon v-perm="'email:delete'" class="icon" icon="uiw:delete" width="16" height="16" @click="handleDelete"/>
+      <Icon v-if="!emailStore.contentData.readOnly" v-perm="'email:delete'" class="icon" icon="uiw:delete" width="16" height="16" @click="handleDelete"/>
       <span class="star" v-if="emailStore.contentData.showStar">
         <Icon class="icon" @click="changeStar" v-if="email.isStar" icon="fluent-color:star-16" width="20" height="20"/>
         <Icon class="icon" @click="changeStar" v-else icon="solar:star-line-duotone" width="18" height="18"/>
@@ -13,31 +13,33 @@
     <div></div>
     <el-scrollbar class="scrollbar">
       <div class="container">
-        <div class="email-title">
-          {{ email.subject }}
-        </div>
-        <div class="content">
-          <div class="email-info">
-            <div>
-              <div class="send"><span class="send-source">{{$t('from')}}</span>
-                <div class="send-name">
-                  <span class="send-name-title">{{ email.name }}</span>
-                  <span><{{ email.sendEmail }}></span>
-                </div>
+        <header class="message-header">
+          <h1 class="email-title">{{ email.subject || $t('noSubject') }}</h1>
+          <div class="sender-row">
+            <div class="sender-avatar" aria-hidden="true">{{ senderInitial }}</div>
+            <div class="sender-meta">
+              <div class="sender-primary">
+                <strong>{{ email.name || email.sendEmail }}</strong>
+                <span class="sender-address">&lt;{{ email.sendEmail }}&gt;</span>
               </div>
-              <div class="receive"><span class="source">{{$t('recipient')}}</span><span class="receive-email">{{  formateReceive(email.recipient) }}</span></div>
-              <div class="date">
-                <div>{{ formatDetailDate(email.createTime) }}</div>
+              <div class="recipient-line">
+                <span>{{ $t('recipient') }}：</span>
+                <span>{{ formateReceive(email.recipient) }}</span>
               </div>
             </div>
+            <time class="message-time">{{ formatDetailDate(email.createTime) }}</time>
+          </div>
+        </header>
+        <div class="content">
+          <div class="email-info">
             <el-alert v-if="email.status === 3" :closable="false" :title="toMessage(email.message)" class="email-msg" type="error" show-icon />
             <el-alert v-if="email.status === 4" :closable="false" :title="$t('complained')" class="email-msg" type="warning" show-icon />
             <el-alert v-if="email.status === 5" :closable="false" :title="$t('delayed')" class="email-msg" type="warning" show-icon />
           </div>
-          <el-scrollbar class="htm-scrollbar" :class="email.attList.length === 0 ? 'bottom-distance' : ''">
+          <div class="message-body" :class="email.attList.length === 0 ? 'bottom-distance' : ''">
             <ShadowHtml class="shadow-html" :html="formatImage(email.content)" v-if="email.content" />
             <pre v-else class="email-text" >{{email.text}}</pre>
-          </el-scrollbar>
+          </div>
           <div class="att" v-if="email.attList.length > 0">
             <div class="att-title">
               <span>{{$t('attachments')}}</span>
@@ -75,7 +77,7 @@
 </template>
 <script setup>
 import ShadowHtml from '@/components/shadow-html/index.vue'
-import {reactive, ref, watch, onMounted, onUnmounted} from "vue";
+import {computed, reactive, ref, watch, onMounted, onUnmounted} from "vue";
 import {useRouter} from 'vue-router'
 import {ElMessage, ElMessageBox} from 'element-plus'
 import {emailDelete, emailRead} from "@/request/email.js";
@@ -101,6 +103,7 @@ const router = useRouter()
 const email = emailStore.contentData.email
 const showPreview = ref(false)
 const srcList = reactive([])
+const senderInitial = computed(() => (email.name || email.sendEmail || '?').trim().charAt(0).toUpperCase())
 
 const { t } = useI18n()
 watch(() => accountStore.currentAccountId, () => {
@@ -108,9 +111,13 @@ watch(() => accountStore.currentAccountId, () => {
 })
 
 onMounted(() => {
-  if (emailStore.contentData.showUnread && email.unread === EmailUnreadEnum.UNREAD) {
+  if (!emailStore.contentData.readOnly && emailStore.contentData.showUnread && email.unread === EmailUnreadEnum.UNREAD) {
     email.unread = EmailUnreadEnum.READ;
-    emailRead([email.emailId]);
+    emailRead([email.emailId]).then(() => {
+      if (email.accountId === accountStore.currentAccountId && accountStore.currentAccount.unreadCount > 0) {
+        accountStore.currentAccount.unreadCount--
+      }
+    });
   }
 })
 
@@ -149,8 +156,12 @@ function isImage(filename) {
 }
 
 function formateReceive(recipient) {
-  recipient = JSON.parse(recipient)
-  return recipient.map(item => item.address).join(', ')
+  try {
+    const parsed = typeof recipient === 'string' ? JSON.parse(recipient) : recipient
+    return Array.isArray(parsed) ? parsed.map(item => item.address).filter(Boolean).join(', ') : (email.toEmail || '')
+  } catch {
+    return email.toEmail || ''
+  }
 }
 
 function changeStar() {
@@ -244,23 +255,102 @@ const handleDelete = () => {
   width: 100%;
 }
 
-.container {
+  .container {
+  width: min(100%, 1120px);
+  margin: 0 auto;
+  padding: 24px 32px 40px;
   font-size: 14px;
-  padding-left: 20px;
-  padding-right: 20px;
-  padding-top: 10px;
   @media (max-width: 1023px) {
-    padding-left: 15px;
-    padding-right: 15px;
+    padding: 18px 18px 32px;
+  }
+
+  .message-header {
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--light-border-color);
   }
 
   .email-title {
-    font-size: 20px;
-    font-weight: bold;
-    margin-bottom: 10px;
+    margin: 0 0 20px;
+    color: var(--el-text-color-primary);
+    font-size: clamp(20px, 2vw, 24px);
+    font-weight: 600;
+    line-height: 1.35;
+    letter-spacing: -0.01em;
+    overflow-wrap: anywhere;
   }
 
-  .htm-scrollbar {
+  .sender-row {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .sender-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: grid;
+    place-items: center;
+    color: #fff;
+    background: var(--el-color-primary);
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  .sender-meta {
+    min-width: 0;
+  }
+
+  .sender-primary {
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    line-height: 1.45;
+  }
+
+  .sender-address,
+  .recipient-line,
+  .message-time {
+    color: var(--secondary-text-color);
+    font-size: 12px;
+  }
+
+  .sender-address {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .recipient-line {
+    margin-top: 3px;
+    overflow-wrap: anywhere;
+  }
+
+  .message-time {
+    align-self: start;
+    padding-top: 3px;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  @media (max-width: 640px) {
+    .sender-row {
+      grid-template-columns: 36px minmax(0, 1fr);
+    }
+    .sender-avatar {
+      width: 36px;
+      height: 36px;
+    }
+    .message-time {
+      grid-column: 2;
+      padding-top: 0;
+    }
+    .sender-primary {
+      display: grid;
+      gap: 1px;
+    }
   }
 
   .content {
@@ -342,17 +432,7 @@ const handleDelete = () => {
     }
 
     .email-info {
-
-      border-bottom: 1px solid var(--light-border-color);
-      margin-bottom: 20px;
-      padding-bottom: 8px;
-      @media (max-width: 1024px) {
-        margin-bottom: 15px;
-      }
-      .date {
-        color: var(--regular-text-color);
-        margin-bottom: 6px;
-      }
+      margin-top: 16px;
 
       .email-msg {
         max-width: 400px;
@@ -360,61 +440,32 @@ const handleDelete = () => {
         margin-bottom: 15px;
       }
 
-      .send {
-        display: flex;
-        margin-bottom: 6px;
-
-        .send-name {
-          color: var(--regular-text-color);
-          display: flex;
-          flex-wrap: wrap;
-        }
-
-        .send-name-title {
-          padding-right: 5px;
-        }
-      }
-
-      .receive {
-        margin-bottom: 6px;
-        display: flex;
-        .receive-email {
-          max-width: 700px;
-          word-break: break-word;
-        }
-        span:nth-child(2) {
-          color: var(--regular-text-color);
-        }
-      }
-
-      .send-source {
-        white-space: nowrap;
-        font-weight: bold;
-        padding-right: 10px;
-      }
-
-      .source {
-        white-space: nowrap;
-        font-weight: bold;
-        padding-right: 10px;
-      }
     }
   }
 }
 
-.shadow-html::after  {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: var(--message-block-color); /* 半透明黑色蒙层 */
-  pointer-events: none; /* 不影响点击 */
+.message-body {
+  min-height: 360px;
+  height: clamp(360px, 62vh, 720px);
+  margin-top: 16px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px var(--light-border-color);
+}
+
+.shadow-html {
+  width: 100%;
+  height: 100%;
 }
 
 .email-text {
-  font-family: inherit;
+  min-height: 100%;
+  padding: 20px 24px;
+  color: #202124;
+  background: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Arial, sans-serif;
+  line-height: 1.65;
   white-space: pre-wrap;
   word-break: break-word;
   margin: 0;

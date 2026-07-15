@@ -8,17 +8,16 @@ import permService from '../service/perm-service';
 import { t } from '../i18n/i18n'
 import app from '../hono/hono';
 
-const exclude = [
+const publicExactPaths = new Set([
 	'/login',
 	'/register',
-	'/oss',
 	'/setting/websiteConfig',
-	'/webhooks',
-	'/init',
-	'/public/genToken',
-	'/telegram',
-	'/test',
-	'/oauth'
+	'/bootstrap'
+]);
+
+const publicPathPrefixes = [
+	'/webhooks/',
+	'/telegram/'
 ];
 
 const requirePerms = [
@@ -39,6 +38,13 @@ const requirePerms = [
 	'/allEmail/delete',
 	'/allEmail/batchDelete',
 	'/allEmail/latest',
+	'/adminMailbox/users',
+	'/adminMailbox/accounts',
+	'/adminMailbox/list',
+	'/adminMailbox/latest',
+	'/adminMailbox/setAllReceive',
+	'/adminMailbox/setName',
+	'/adminMailbox/setForward',
 	'/setting/setBackground',
 	'/setting/deleteBackground',
 	'/setting/set',
@@ -79,7 +85,11 @@ const premKey = {
 	'user:set-status': ['/user/setStatus', '/user/restore'],
 	'user:set-type': ['/user/setType'],
 	'user:delete': ['/user/delete','/user/deleteAccount'],
-	'all-email:query': ['/allEmail/list','/allEmail/latest'],
+	'all-email:query': [
+		'/allEmail/list', '/allEmail/latest',
+		'/adminMailbox/users', '/adminMailbox/accounts', '/adminMailbox/list', '/adminMailbox/latest',
+		'/adminMailbox/setAllReceive', '/adminMailbox/setName', '/adminMailbox/setForward'
+	],
 	'all-email:delete': ['/allEmail/delete','/allEmail/batchDelete'],
 	'setting:query': ['/setting/query'],
 	'setting:set': ['/setting/set', '/setting/setBackground','/setting/deleteBackground','/setting/setBlacklist'],
@@ -93,11 +103,7 @@ app.use('*', async (c, next) => {
 
 	const path = c.req.path;
 
-	const index = exclude.findIndex(item => {
-		return path.startsWith(item);
-	});
-
-	if (index > -1) {
+	if (publicExactPaths.has(path) || publicPathPrefixes.some(prefix => path.startsWith(prefix))) {
 		return await next();
 	}
 

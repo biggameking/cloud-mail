@@ -13,7 +13,7 @@
 import account from '@/layout/account/index.vue'
 import {useUiStore} from "@/store/ui.js";
 import {useSettingStore} from "@/store/setting.js";
-import {computed, onBeforeUnmount, onMounted, watch} from "vue";
+import {computed, h, onBeforeUnmount, onMounted, watch} from "vue";
 import { useRoute } from 'vue-router'
 import { hasPerm } from "@/perm/perm.js"
 
@@ -60,10 +60,11 @@ function showNotice(data) {
     elNotification.close()
   }
 
+  const noticeWidth = Math.min(Math.max(Number(data.noticeWidth) || 340, 240), 1200);
   const style = document.createElement('style');
   style.innerHTML = `
   .custom-notice.el-notification {
-    --el-notification-width: min(${data.noticeWidth}px,calc(100% - 30px)) !important;
+    --el-notification-width: min(${noticeWidth}px,calc(100% - 30px)) !important;
   }
   `;
 
@@ -71,12 +72,11 @@ function showNotice(data) {
 
   elNotification = ElNotification({
     title: data.noticeTitle,
-    message: `<div style="width: 100%;height: 100%;">${data.noticeContent}</div>`,
+    message: h('div', { style: 'width:100%;height:100%;white-space:pre-wrap' }, data.noticeContent || ''),
     type: data.noticeType === 'none' ? '' : data.noticeType,
     duration: data.noticeDuration,
     position: data.noticePosition,
     offset: data.noticeOffset,
-    dangerouslyUseHTMLString: true,
     customClass: 'custom-notice'
   })
 }

@@ -1,32 +1,53 @@
 <template>
   <div class="account-box">
     <div class="head-opt">
-      <Icon v-perm="'account:add'" class="icon add" icon="ion:add-outline" width="23" height="23" @click="add"/>
+      <el-select
+          v-if="isSuperAdmin"
+          v-model="scopeValue"
+          class="mailbox-scope"
+          :placeholder="$t('mailboxView')"
+          @change="changeMailboxScope"
+      >
+        <el-option :label="$t('myMailbox')" value="self"/>
+        <el-option v-if="aggregateEnabled" :label="$t('allUsersInbox')" value="aggregate"/>
+        <el-option
+            v-for="item in mailboxUsers"
+            :key="item.userId"
+            :label="item.email"
+            :value="`user:${item.userId}`"
+        />
+      </el-select>
+      <Icon v-if="isSelfScope" v-perm="'account:add'" class="icon add" icon="ion:add-outline" width="23" height="23" @click="add"/>
       <Icon class="icon refresh" icon="ion:reload" width="18" height="18" @click="refresh"/>
     </div>
     <el-scrollbar class="scrollbar" ref="scrollbarRef">
       <div v-infinite-scroll="getAccountList" :infinite-scroll-distance="600" :infinite-scroll-immediate="false">
-        <el-card class="item" :class="itemBg(item.accountId)" v-for="(item, index) in accounts" :key="item.accountId"
+        <el-card class="item" :class="itemBg(item.accountId)" v-for="(item, index) in visibleAccounts" :key="item.accountId"
                  @click="changeAccount(item)">
-          <div class="account">
-            {{ item.email }}
+          <div class="account-heading">
+            <div class="account">{{ item.email }}</div>
+            <Icon v-if="item.managedUser" class="managed-user-icon" icon="mynaui:user" width="17" height="17"/>
           </div>
           <div class="opt">
-            <div class="send-email" @click.stop>
-              <Icon @click="setAllReceive(item)" v-if="!item.allReceive" icon="eva:email-fill" width="22" height="22" color="#fccb1a"/>
-              <Icon @click="setAllReceive(item)" v-else icon="flat-color-icons:folder" width="22" height="22" color="#23c4f1" />
-            </div>
+            <button class="card-icon-button inbox-default-button" type="button" @click.stop="setAllReceive(item)" :title="$t('setDefaultInbox')">
+              <Icon v-if="!item.allReceive" icon="eva:email-fill" width="21" height="21" color="#e8b813"/>
+              <Icon v-else icon="flat-color-icons:folder" width="21" height="21"/>
+              <span class="unread-count" :class="{'has-unread': item.unreadCount > 0}">{{ item.unreadCount || 0 }}</span>
+            </button>
             <div class="settings" @click.stop>
-              <Icon icon="fluent-color:clipboard-24" width="22" height="22" @click.stop="copyAccount(item.email)"/>
-              <Icon icon="fluent:settings-24-filled" width="21" height="21" color="#909399"
-                    v-if="showNullSetting(item)"/>
-              <el-dropdown v-else>
-                <Icon icon="fluent:settings-24-filled" width="21" height="21" color="#909399"/>
+              <button class="card-icon-button" type="button" :title="$t('copy')" @click.stop="copyAccount(item.email)">
+                <Icon icon="fluent-color:clipboard-24" width="20" height="20"/>
+              </button>
+              <el-dropdown>
+                <button class="card-icon-button" type="button" :title="$t('settings')">
+                  <Icon icon="fluent:settings-24-filled" width="20" height="20" color="#7b8490"/>
+                </button>
                 <template #dropdown>
                   <el-dropdown-menu>
                     <el-dropdown-item v-if="hasPerm('email:send')" @click="openSetName(item)">{{ $t('rename') }}</el-dropdown-item>
-                    <el-dropdown-item v-if="item.accountId !== userStore.user.account.accountId" @click="setAsTop(item, index)">{{ $t('pin') }}</el-dropdown-item>
-                    <el-dropdown-item v-if="item.accountId !== userStore.user.account.accountId && hasPerm('account:delete')"
+					<el-dropdown-item @click="openSetForward(item)">{{ $t('forwarding') }}</el-dropdown-item>
+                    <el-dropdown-item v-if="isSelfScope && !item.managedUser && item.accountId !== userStore.user.account.accountId" @click="setAsTop(item, index)">{{ $t('pin') }}</el-dropdown-item>
+                    <el-dropdown-item v-if="isSelfScope && !item.managedUser && item.accountId !== userStore.user.account.accountId && hasPerm('account:delete')"
                                       @click="remove(item)">{{ $t('delete') }}
                     </el-dropdown-item>
                   </el-dropdown-menu>
@@ -123,6 +144,22 @@
         </el-button>
       </div>
     </el-dialog>
+	<el-dialog v-model="setForwardShow" :title="$t('forwarding')">
+	  <div class="container forward-form">
+		<el-switch v-model="forwardForm.enabled" :active-text="$t('enableForwarding')"/>
+		<el-input
+		  v-model="forwardForm.forwardEmail"
+		  type="email"
+		  :disabled="!forwardForm.enabled"
+		  :placeholder="$t('forwardingAddress')"
+		  autocomplete="off"
+		/>
+		<el-alert :title="$t('forwardingVerificationHint')" type="warning" :closable="false" show-icon/>
+		<el-button class="btn" type="primary" @click="saveForward" :loading="setForwardLoading">
+		  {{ $t('save') }}
+		</el-button>
+	  </div>
+	</el-dialog>
   </div>
 </template>
 <script setup>
@@ -133,6 +170,7 @@ import {
   accountAdd,
   accountDelete,
   accountSetName,
+	accountSetForward,
   accountSetAllReceive,
   accountSetAsTop
 } from "@/request/account.js";
@@ -145,6 +183,13 @@ import {useUserStore} from "@/store/user.js";
 import {hasPerm} from "@/perm/perm.js"
 import {useI18n} from "vue-i18n";
 import {AccountAllReceiveEnum} from "@/enums/account-enum.js";
+import {
+  adminMailboxAccounts,
+  adminMailboxSetAllReceive,
+  adminMailboxSetForward,
+  adminMailboxSetName,
+  adminMailboxUsers
+} from "@/request/admin-mailbox.js";
 
 const {t} = useI18n();
 const userStore = useUserStore();
@@ -161,6 +206,8 @@ const followLoading = ref(false);
 const verifyShow = ref(false)
 const setNameShow = ref(false)
 const setNameLoading = ref(false)
+const setForwardShow = ref(false)
+const setForwardLoading = ref(false)
 const accountName = ref(null)
 const addRef = ref({})
 const scrollbarRef = ref({})
@@ -174,15 +221,45 @@ const addForm = reactive({
   email: '',
   suffix: settingStore.domainList[0]
 })
+const forwardForm = reactive({enabled: false, forwardEmail: ''})
+let forwardAccount = null
 let skeletonRows = 10
 const queryParams = {
   size: 30
 }
 
 const mySelect = ref()
+const mailboxUsers = ref([])
+const managedAccounts = ref([])
+const scopeValue = ref('self')
+const isSuperAdmin = computed(() => userStore.user.type === 0)
+const isSelfScope = computed(() => accountStore.mailboxScope === 'self')
+const aggregateEnabled = computed(() => settingStore.settings.adminAggregateInbox === 0)
+const visibleAccounts = computed(() => isSelfScope.value && isSuperAdmin.value
+    ? [...accounts, ...managedAccounts.value]
+    : accounts)
 
 if (hasPerm('account:query')) {
   getAccountList()
+}
+
+if (isSuperAdmin.value) {
+  adminMailboxUsers().then(list => {
+    mailboxUsers.value = list
+    managedAccounts.value = list.filter(item => item.accountId).map(item => ({
+      accountId: item.accountId,
+      email: item.accountEmail,
+      name: item.accountName,
+      allReceive: item.allReceive,
+      unreadCount: item.unreadCount,
+      forwardEnabled: item.forwardEnabled,
+      forwardEmail: item.forwardEmail,
+      sort: item.sort,
+      managedUser: true,
+      ownerUserId: item.userId,
+      ownerEmail: item.email
+    }))
+  })
 }
 
 watch(() => accountStore.changeUserAccountName, () => {
@@ -194,6 +271,13 @@ watch(() => settingStore.domainList, (list) => {
     addForm.suffix = list[0]
   }
 }, {immediate: true})
+
+watch(aggregateEnabled, enabled => {
+  if (!enabled && accountStore.mailboxScope === 'aggregate') {
+    scopeValue.value = 'self'
+    changeMailboxScope('self')
+  }
+})
 
 
 const openSelect = () => {
@@ -246,7 +330,10 @@ function setName() {
   }
 
   setNameLoading.value = true
-  accountSetName(account.accountId, name).then(() => {
+  const request = account.managedUser
+      ? adminMailboxSetName(account.accountId, name)
+      : accountSetName(account.accountId, name)
+  request.then(() => {
     account.name = name
     setNameShow.value = false
 
@@ -270,14 +357,47 @@ function openSetName(accountItem) {
   setNameShow.value = true
 }
 
-function setAllReceive(account) {
-  let allReceiveAccount = accounts.find(account => account.allReceive === AccountAllReceiveEnum.ENABLED);
-  if (allReceiveAccount && allReceiveAccount.accountId !== account.accountId) allReceiveAccount.allReceive = AccountAllReceiveEnum.DISABLED;
-  account.allReceive = account.allReceive === AccountAllReceiveEnum.DISABLED ? AccountAllReceiveEnum.ENABLED : AccountAllReceiveEnum.DISABLED;
-  accountSetAllReceive(account.accountId).catch(() => {
-    account.allReceive = account.allReceive === AccountAllReceiveEnum.DISABLED ? AccountAllReceiveEnum.ENABLED : AccountAllReceiveEnum.DISABLED;
-    if (allReceiveAccount) allReceiveAccount.allReceive = AccountAllReceiveEnum.ENABLED;
-  }).then(() => {
+function openSetForward(accountItem) {
+  forwardAccount = accountItem
+  forwardForm.enabled = Boolean(accountItem.forwardEnabled)
+  forwardForm.forwardEmail = accountItem.forwardEmail || ''
+  setForwardShow.value = true
+}
+
+function saveForward() {
+  const target = forwardForm.forwardEmail.trim().toLowerCase()
+  if (forwardForm.enabled && !isEmail(target)) {
+    ElMessage({message: t('invalidForwardingEmail'), type: 'error', plain: true})
+    return
+  }
+
+  setForwardLoading.value = true
+  const request = forwardAccount.managedUser
+      ? adminMailboxSetForward(forwardAccount.accountId, forwardForm.enabled, target)
+      : accountSetForward(forwardAccount.accountId, forwardForm.enabled, target)
+  request.then(() => {
+    forwardAccount.forwardEnabled = forwardForm.enabled ? 1 : 0
+    forwardAccount.forwardEmail = forwardForm.enabled ? target : ''
+    setForwardShow.value = false
+    ElMessage({message: t('saveSuccessMsg'), type: 'success', plain: true})
+  }).finally(() => {
+    setForwardLoading.value = false
+  })
+}
+
+async function setAllReceive(account) {
+  const candidates = account.managedUser
+      ? visibleAccounts.value.filter(item => item.managedUser && item.ownerUserId === account.ownerUserId)
+      : accounts.filter(item => !item.managedUser)
+  const previous = candidates.map(item => ({item, allReceive: item.allReceive}))
+  const enabling = account.allReceive === AccountAllReceiveEnum.DISABLED
+  candidates.forEach(item => item.allReceive = AccountAllReceiveEnum.DISABLED)
+  account.allReceive = enabling ? AccountAllReceiveEnum.ENABLED : AccountAllReceiveEnum.DISABLED
+  try {
+    const request = account.managedUser
+        ? adminMailboxSetAllReceive(account.accountId)
+        : accountSetAllReceive(account.accountId)
+    await request
     if (account.allReceive === AccountAllReceiveEnum.ENABLED) {
       ElMessage({
         message: t('setSuccess'),
@@ -288,12 +408,15 @@ function setAllReceive(account) {
     changeAccount(account);
     emailStore.emailScroll?.refreshList();
     emailStore.sendScroll?.refreshList();
-  })
+  } catch (error) {
+    previous.forEach(({item, allReceive}) => item.allReceive = allReceive)
+    throw error
+  }
 }
 
 
 function showNullSetting(item) {
-  return !hasPerm('email:send') && !(item.accountId !== userStore.user.account.accountId && hasPerm('account:delete'))
+  return false
 }
 
 function itemBg(accountId) {
@@ -333,7 +456,7 @@ function refresh() {
   queryParams.accountId = 0
   queryParams.lastSort = null
   getSkeletonRows();
-  scrollbarRef.value.setScrollTop(0)
+  scrollbarRef.value?.setScrollTop?.(0)
   accounts.splice(0, accounts.length)
   getAccountList()
 }
@@ -341,6 +464,27 @@ function refresh() {
 function changeAccount(account) {
   accountStore.currentAccountId = account.accountId
   accountStore.currentAccount = account
+}
+
+function changeMailboxScope(value) {
+  if (value === 'self') {
+    accountStore.mailboxScope = 'self'
+    accountStore.viewUserId = 0
+    accountStore.viewUserEmail = ''
+  } else if (value === 'aggregate') {
+    accountStore.mailboxScope = 'aggregate'
+    accountStore.viewUserId = 0
+    accountStore.viewUserEmail = ''
+  } else {
+    const userId = Number(value.split(':')[1])
+    const selected = mailboxUsers.value.find(item => item.userId === userId)
+    accountStore.mailboxScope = 'user'
+    accountStore.viewUserId = userId
+    accountStore.viewUserEmail = selected?.email || ''
+  }
+  accountStore.currentAccountId = 0
+  accountStore.currentAccount = {}
+  refresh()
 }
 
 function add() {
@@ -393,12 +537,36 @@ function getAccountList() {
     followLoading.value = true
   }
 
+  if (accountStore.mailboxScope === 'aggregate') {
+    const aggregate = {accountId: -1, email: t('allUsersInbox'), allReceive: 1, sort: 0}
+    accounts.push(aggregate)
+    accountStore.currentAccountId = aggregate.accountId
+    accountStore.currentAccount = aggregate
+    loading.value = false
+    followLoading.value = false
+    noLoading.value = true
+    return
+  }
+
   let start = Date.now();
 
   const accountId = accounts.length > 0 ? accounts.at(-1).accountId : 0;
   const lastSort = accounts.length > 0 ? accounts.at(-1).sort : null;
 
-  accountList(accountId, queryParams.size, lastSort).then(async list => {
+  const listRequest = accountStore.mailboxScope === 'user'
+      ? adminMailboxAccounts(accountStore.viewUserId, accountId, queryParams.size, lastSort)
+      : accountList(accountId, queryParams.size, lastSort)
+
+  listRequest.then(async list => {
+
+    if (accountStore.mailboxScope === 'user') {
+      list = list.map(item => ({
+        ...item,
+        managedUser: true,
+        ownerUserId: accountStore.viewUserId,
+        ownerEmail: accountStore.viewUserEmail
+      }))
+    }
 
     let end = Date.now();
     let duration = end - start;
@@ -411,6 +579,7 @@ function getAccountList() {
     }
     if (accounts.length === 0) {
       accountStore.currentAccount = list[0]
+      accountStore.currentAccountId = list[0]?.accountId || 0
     }
 
     accounts.push(...list)
@@ -531,6 +700,12 @@ path[fill="#ffdda1"] {
     padding-left: 10px;
     padding-right: 10px;
 
+    .mailbox-scope {
+      flex: 1;
+      min-width: 0;
+      margin-right: 6px;
+    }
+
     .icon {
       cursor: pointer;
     }
@@ -577,21 +752,39 @@ path[fill="#ffdda1"] {
     margin-top: 15px;
   }
 
+	.forward-form {
+	  display: grid;
+	  gap: 14px;
+	}
+
   .item {
+    position: relative;
     background-color: var(--el-bg-color);
     border-radius: 8px;
-    padding: 12px 10px;
+    padding: 12px;
     margin-bottom: 10px;
     margin-left: 10px;
     margin-right: 10px;
     cursor: pointer;
 
+    .account-heading {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 18px;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+
     .account {
       font-weight: 600;
-      margin-bottom: 20px;
       overflow: hidden;
       white-space: nowrap;
       text-overflow: ellipsis;
+    }
+
+    .managed-user-icon {
+      color: var(--el-color-primary);
     }
 
     .opt {
@@ -603,12 +796,52 @@ path[fill="#ffdda1"] {
       .settings {
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 4px;
       }
 
-      .send-email {
-        display: flex;
+      .card-icon-button {
+        min-width: 28px;
+        height: 28px;
+        padding: 0 4px;
+        border: 0;
+        border-radius: 5px;
+        background: transparent;
+        color: inherit;
+        display: inline-flex;
         align-items: center;
+        justify-content: center;
+        gap: 4px;
+        cursor: pointer;
+        transition: background-color 160ms ease, transform 160ms ease;
+      }
+
+      .card-icon-button:hover {
+        background: var(--light-ill);
+      }
+
+      .card-icon-button:active {
+        transform: translateY(1px);
+      }
+
+      .inbox-default-button {
+        padding-left: 2px;
+      }
+
+      .unread-count {
+        min-width: 17px;
+        padding: 0 4px;
+        border-radius: 8px;
+        color: var(--secondary-text-color);
+        font-size: 11px;
+        font-variant-numeric: tabular-nums;
+        line-height: 17px;
+        text-align: center;
+      }
+
+      .unread-count.has-unread {
+        color: #fff;
+        background: var(--el-color-primary);
+        font-weight: 600;
       }
     }
 
@@ -624,6 +857,7 @@ path[fill="#ffdda1"] {
   .item-choose {
     background: var(--choose-account-background);
   }
+
 }
 
 

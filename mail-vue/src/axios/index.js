@@ -48,7 +48,6 @@ http.interceptors.response.use((res) => {
 
             } else if (data.code === 502) {
                 ElMessage({
-                    dangerouslyUseHTMLString: true,
                     message: data.message,
                     type: 'error',
                     plain: true,
@@ -71,15 +70,33 @@ http.interceptors.response.use((res) => {
     },
     (error) => {
 
-        if (error.status === 403) {
-            location.reload();
-            return;
-        }
-
-        const noMsg = error.config.noMsg;
+        const noMsg = error.config?.noMsg;
 
         if (noMsg) {
             return Promise.reject(error)
+        }
+
+        const responseData = error.response?.data;
+        const responseCode = responseData?.code ?? error.response?.status;
+
+        if (responseCode === 401) {
+            ElMessage({
+                message: responseData?.message || i18n.global.t('reqFailErrorMsg'),
+                type: 'error',
+                plain: true,
+                grouping: true,
+                repeatNum: -4,
+            })
+            localStorage.removeItem('token')
+            router.replace('/login')
+        } else if (responseData?.message) {
+            ElMessage({
+                message: responseData.message,
+                type: responseCode === 403 ? 'warning' : 'error',
+                plain: true,
+                grouping: true,
+                repeatNum: -4,
+            })
         } else if (error.message.includes('Network Error')) {
             ElMessage({
                 message: i18n.global.t('networkErrorMsg'),

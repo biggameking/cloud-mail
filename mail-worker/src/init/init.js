@@ -4,13 +4,6 @@ import {emailConst} from "../const/entity-const";
 
 const dbInit = {
 	async init(c) {
-
-		const secret = c.req.param('secret');
-
-		if (secret !== c.env.jwt_secret) {
-			return c.text('❌ JWT secret mismatch');
-		}
-
 		await this.intDB(c);
 		await this.v1_1DB(c);
 		await this.v1_2DB(c);
@@ -29,8 +22,40 @@ const dbInit = {
 		await this.v2_8DB(c);
 		await this.v2_9DB(c);
 		await this.v3_0DB(c);
+		await this.v3_1DB(c);
+		await this.v3_2DB(c);
+		await c.env.db.prepare(`UPDATE setting SET
+			secret_key = NULL,
+			site_key = NULL,
+			tg_bot_token = '',
+			resend_tokens = '{}',
+			s3_access_key = '',
+			s3_secret_key = ''`).run();
 		await settingService.refresh(c);
 		return c.text('success');
+	},
+
+	async v3_2DB(c) {
+		try {
+			await c.env.db.prepare(
+				`ALTER TABLE setting ADD COLUMN admin_aggregate_inbox INTEGER NOT NULL DEFAULT 1`
+			).run();
+		} catch (error) {
+			if (!error.message?.includes('duplicate column')) throw error;
+		}
+	},
+
+	async v3_1DB(c) {
+		for (const statement of [
+			`ALTER TABLE account ADD COLUMN forward_enabled INTEGER NOT NULL DEFAULT 0`,
+			`ALTER TABLE account ADD COLUMN forward_email TEXT NOT NULL DEFAULT ''`
+		]) {
+			try {
+				await c.env.db.prepare(statement).run();
+			} catch (error) {
+				if (!error.message?.includes('duplicate column')) throw error;
+			}
+		}
 	},
 
 	async v3_0DB(c) {
@@ -584,6 +609,8 @@ const dbInit = {
 			latest_email_time DATETIME,
 			create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
 			user_id INTEGER NOT NULL,
+			forward_enabled INTEGER DEFAULT 0 NOT NULL,
+			forward_email TEXT DEFAULT '' NOT NULL,
 			is_del INTEGER DEFAULT 0 NOT NULL
 		  )
 		`).run();
@@ -606,7 +633,7 @@ const dbInit = {
 			  INSERT INTO setting (
 				register, receive, add_email, many_email, title, auto_refresh, register_verify, add_email_verify
 			  )
-			  SELECT 0, 0, 0, 0, 'Cloud Mail', 0, 1, 1
+			  SELECT 1, 0, 0, 0, 'Cloud Mail', 0, 1, 1
 			  WHERE NOT EXISTS (SELECT 1 FROM setting)
 			`).run();
 		} catch (e) {

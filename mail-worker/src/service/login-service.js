@@ -22,7 +22,7 @@ import verifyRecordService from './verify-record-service';
 
 const loginService = {
 
-	async register(c, params, oauth = false) {
+	async register(c, params, oauth = false, allowClosed = false) {
 
 		const { email, password, token, code } = params;
 
@@ -33,7 +33,7 @@ const loginService = {
 			register = settingConst.register.OPEN;
 		}
 
-		if (register === settingConst.register.CLOSE) {
+		if (register === settingConst.register.CLOSE && !allowClosed) {
 			throw new BizError(t('regDisabled'));
 		}
 
@@ -83,11 +83,11 @@ const loginService = {
 		const accountRow = await accountService.selectByEmailIncludeDel(c, email);
 
 		if (accountRow && accountRow.isDel === isDel.DELETE) {
-			throw new BizError(t('isDelUser'));
+			throw new BizError(t('isDelUser'), 409);
 		}
 
 		if (accountRow) {
-			throw new BizError(t('isRegAccount'));
+			throw new BizError(t('isRegAccount'), 409);
 		}
 
 		let defType = null

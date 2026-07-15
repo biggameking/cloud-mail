@@ -59,6 +59,11 @@ export async function email(message, env, ctx) {
 
 		const account = await accountService.selectByEmailIncludeDel({ env: env }, message.to);
 
+		if (account?.isDel === isDel.DELETE) {
+			message.setReject('Recipient not found');
+			return;
+		}
+
 		if (!account && noRecipient === settingConst.noRecipient.CLOSE) {
 			message.setReject('Recipient not found');
 			return;
@@ -68,6 +73,11 @@ export async function email(message, env, ctx) {
 
 		if (account) {
 			 userRow = await userService.selectByIdIncludeDel({ env: env }, account.userId);
+		}
+
+		if (account && (!userRow || userRow.isDel === isDel.DELETE)) {
+			message.setReject('Recipient not found');
+			return;
 		}
 
 		if (account && userRow.email !== env.admin) {
@@ -141,7 +151,7 @@ export async function email(message, env, ctx) {
 				await attService.addAtt({ env }, attachments);
 			}
 		} catch (e) {
-			console.error(e);
+			console.error('Attachment persistence failed', { code: e?.name || 'ATTACHMENT_FAILED' });
 		}
 
 		emailRow = await emailService.completeReceive({ env }, account ? emailConst.status.RECEIVE : emailConst.status.NOONE, emailRow.emailId);
@@ -162,25 +172,23 @@ export async function email(message, env, ctx) {
 			await telegramService.sendEmailToBot({ env }, emailRow)
 		}
 
-		//转发到其他邮箱
-		if (forwardStatus === settingConst.forwardStatus.OPEN && forwardEmail) {
+		// Prefer the mailbox-specific verified destination; keep legacy global forwarding as fallback.
+		const forwardTargets = account?.forwardEnabled && account.forwardEmail
+			? [account.forwardEmail]
+			: (forwardStatus === settingConst.forwardStatus.OPEN && forwardEmail
+				? forwardEmail.split(',').map(item => item.trim()).filter(Boolean)
+				: []);
 
-			const emails = forwardEmail.split(',');
-
-			await Promise.all(emails.map(async email => {
-
-				try {
-					await message.forward(email);
-				} catch (e) {
-					console.error(`转发邮箱 ${email} 失败：`, e);
-				}
-
-			}));
-
+		for (const target of forwardTargets) {
+			try {
+				await message.forward(target);
+			} catch (error) {
+				console.error('Email forwarding failed', { code: error?.name || 'FORWARD_FAILED' });
+			}
 		}
 
 	} catch (e) {
-		console.error('邮件接收异常: ', e);
+		console.error('Email receive failed', { code: e?.name || 'RECEIVE_FAILED' });
 		throw e
 	}
 }

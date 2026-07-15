@@ -1,11 +1,17 @@
 <template>
   <div class="content-box" ref="contentBox">
-    <div ref="container" class="content-html"></div>
+	<iframe
+	  class="content-html"
+	  sandbox=""
+	  referrerpolicy="no-referrer"
+	  :srcdoc="safeDocument"
+	  :title="$t('emailContent')"
+	></iframe>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { computed, ref } from 'vue'
 
 const props = defineProps({
   html: {
@@ -14,99 +20,28 @@ const props = defineProps({
   }
 })
 
-const container = ref(null)
 const contentBox = ref(null)
-let shadowRoot = null
-
-function updateContent() {
-  if (!shadowRoot) return;
-
-  // 1. 提取 <body> 的 style 属性（如果存在）
-  const bodyStyleRegex = /<body[^>]*style="([^"]*)"[^>]*>/i;
-  const bodyStyleMatch = props.html.match(bodyStyleRegex);
-  const bodyStyle = bodyStyleMatch ? bodyStyleMatch[1] : '';
-
-  // 2. 移除 <body> 标签（保留内容）
-  const cleanedHtml = props.html.replace(/<\/?body[^>]*>/gi, '');
-
-  // 3. 将 body 的 style 应用到 .shadow-content
-  shadowRoot.innerHTML = `
-    <style>
-      :host {
-        all: initial;
-        width: 100%;
-        height: 100%;
-        font-family: -apple-system, Inter, BlinkMacSystemFont,
-                    'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-        font-size: 14px;
-        line-height: 1.5;
-        color: #13181D;
-        word-break: break-word;
-      }
-
-      h1, h2, h3, h4 {
-          font-size: 18px;
-          font-weight: 700;
-      }
-
-      p {
-        margin: 0;
-      }
-
-      a {
-        text-decoration: none;
-        color: #0E70DF;
-      }
-
-      .shadow-content {
-        background: #FFFFFF;
-        width: fit-content;
-        height: fit-content;
-        min-width: 100%;
-        ${bodyStyle ? bodyStyle : ''} /* 注入 body 的 style */
-      }
-
-      img:not(table img) {
-        max-width: 100%;
-        height: auto !important;
-      }
-
-    </style>
-    <div class="shadow-content">
-      ${cleanedHtml}
-    </div>
-  `;
-}
-
-function autoScale() {
-  if (!shadowRoot || !contentBox.value) return
-
-  const parent = contentBox.value
-  const shadowContent = shadowRoot.querySelector('.shadow-content')
-
-  if (!shadowContent) return
-
-  const parentWidth = parent.offsetWidth
-  const childWidth = shadowContent.scrollWidth
-
-  if (childWidth === 0) return
-
-  const scale = parentWidth / childWidth
-
-  const hostElement = shadowRoot.host
-  hostElement.style.zoom = scale
-}
-
-onMounted(() => {
-  shadowRoot = container.value.attachShadow({ mode: 'open' })
-  updateContent()
-  autoScale()
-})
-
-watch(() => props.html, () => {
-  updateContent()
-  autoScale()
-})
+const safeDocument = computed(() => `<!doctype html>
+<html><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:; object-src 'none'; base-uri 'none'; form-action 'none'">
+<style>
+html{color-scheme:light;background:#fff}
+body{box-sizing:border-box;margin:0;padding:20px 24px 32px;background:#fff;color:#202124;font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Arial,sans-serif;overflow-wrap:anywhere}
+*,*::before,*::after{box-sizing:border-box}
+img{max-width:100%!important;height:auto!important}
+table{max-width:100%!important;border-collapse:collapse}
+td,th{max-width:100%;vertical-align:top}
+p{margin:0 0 12px}
+h1,h2,h3,h4,h5,h6{margin:20px 0 10px;color:#1f2328;line-height:1.3}
+a{color:#1967d2;text-decoration:none}
+a:hover{text-decoration:underline}
+blockquote{margin:16px 0;padding:2px 0 2px 14px;border-left:3px solid #d8dee4;color:#57606a}
+pre,code{font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace}
+pre{max-width:100%;padding:12px;overflow:auto;border-radius:6px;background:#f6f8fa;white-space:pre-wrap}
+hr{height:1px;margin:20px 0;border:0;background:#e5e7eb}
+@media(max-width:640px){body{padding:16px 14px 24px}}
+</style>
+</head><body>${props.html || ''}</body></html>`)
 </script>
 
 <style scoped>
@@ -118,7 +53,10 @@ watch(() => props.html, () => {
 }
 
 .content-html {
+  display: block;
   width: 100%;
   height: 100%;
+  border: 0;
+  background: #fff;
 }
 </style>

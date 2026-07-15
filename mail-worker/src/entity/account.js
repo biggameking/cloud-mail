@@ -9,6 +9,8 @@ export const account = sqliteTable('account', {
 	createTime: text('create_time').default(sql`CURRENT_TIMESTAMP`),
 	userId: integer('user_id').notNull(),
 	allReceive: integer('all_receive').default(0).notNull(),
+	forwardEnabled: integer('forward_enabled').default(0).notNull(),
+	forwardEmail: text('forward_email').default('').notNull(),
 	sort: integer('sort').default(0).notNull(),
 	isDel: integer('is_del').default(0).notNull(),
 });

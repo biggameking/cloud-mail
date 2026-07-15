@@ -9,6 +9,10 @@ lerna-debug.log*
 node_modules
 dist-ssr
 *.local
+.env
+.env.*
+!.env.example
+.cloudflare-api-token
 dist
 
 .vscode/*
@@ -25,3 +29,4 @@ mail-vue/node_modules
 mail-vue/dist
 .wrangler
 .venv
+backups/

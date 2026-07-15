@@ -1,47 +1,49 @@
-name = "cloud-mail"
+name = "cloudmail-echoec"
+account_id = "a0ad4d75c38c21f63cbd49bb8cdd4a22"
 main = "src/index.js"
-compatibility_date = "2025-06-04"
+compatibility_date = "2026-07-14"
+workers_dev = false
+preview_urls = false
 keep_vars = true
 
-[observability]
-enabled = true
+[[routes]]
+pattern = "cloudmail.echoec.com"
+custom_domain = true
 
-#[[d1_databases]]
-#binding = "db"			#d1数据库绑定名默认不可修改
-#database_name = ""		#d1数据库名字
-#database_id = ""		#d1数据库id
+[[d1_databases]]
+binding = "db"
+database_name = "cloudmail-echoec-db"
+database_id = "21749445-43a8-413c-88cd-ae6d76ec36dc"
 
-#[[kv_namespaces]]
-#binding = "kv"			#kv绑定名默认不可修改
-#id = ""					#kv数据库id
+[[kv_namespaces]]
+binding = "kv"
+id = "55b3b01537f64c70bcab450ab7ce502a"
 
-#[[r2_buckets]]
-#binding = "r2"			#r2对象存储绑定名默认不可修改
-#bucket_name = ""		#r2对象存储桶的名字
-
-#[[send_email]]
-#name = "email"			#CF发件, 配置后优先使用
-
-[ai]
-binding = "ai"
+[[r2_buckets]]
+binding = "r2"
+bucket_name = "cloudmail-echoec-attachments"
 
 [assets]
-binding = "assets"		#静态资源绑定名默认不可修改
-directory = "./dist"	#前端vue项目打包的静态资源存放位置,默认dist
+binding = "assets"
+directory = "./dist"
 not_found_handling = "single-page-application"
 run_worker_first = true
 
 [triggers]
-crons = ["0 16 * * *"]	#每天晚上12点执行每日任务,刷新分析缓存
+crons = ["0 16 * * *"]
 
+[observability]
+enabled = true
+head_sampling_rate = 0.05
 
 [vars]
-#ai_model = ""			#ai模型,不填默认使用@cf/meta/llama-3.1-8b-instruct
-#analysis_cache = false			#是否开启分析数据缓存
-#orm_log = false			#是否sql日志
-#domain = []				#邮件域名可可配置多个 示例: ["example1.com","example2.com"]
-#admin = ""				#管理员的邮箱	示例: admin@example.com
-#jwt_secret = ""			#jwt令牌的密钥,随便填一串字符串
+domain = ["echoec.com"]
+admin = "admin@echoec.com"
+ALLOWED_ORIGINS = "https://cloudmail.echoec.com"
+ALLOW_PUBLIC_REGISTRATION = "false"
+ENABLE_BOOTSTRAP = "false"
+project_link = false
+linuxdo_switch = false
 
 [build]
-command = "pnpm --prefix ../mail-vue install && pnpm --prefix ../mail-vue run build"
+command = "pnpm --prefix ../mail-vue install --frozen-lockfile && pnpm --prefix ../mail-vue run build"

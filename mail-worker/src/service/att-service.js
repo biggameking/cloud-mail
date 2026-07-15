@@ -47,6 +47,17 @@ const attService = {
 		).all();
 	},
 
+	selectOwnedByKey(c, key, userId) {
+		return orm(c).select().from(att).where(
+			and(eq(att.key, key), eq(att.userId, userId))
+		).orderBy(desc(att.attId)).get();
+	},
+
+	selectByKey(c, key) {
+		return orm(c).select().from(att).where(eq(att.key, key))
+			.orderBy(desc(att.attId)).get();
+	},
+
 	async toImageUrlHtml(c, content) {
 
 		const { r2Domain } = await settingService.query(c);

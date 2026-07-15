@@ -38,8 +38,8 @@ const emailUtils = {
 			document.querySelectorAll('style, script, title').forEach(el => el.remove());
 			let text = document.body.innerText;
 			return this.formatText(text);
-		} catch (e) {
-			console.error(e)
+		} catch {
+			console.error('Email HTML text extraction failed')
 			return ''
 		}
 	}

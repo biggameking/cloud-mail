@@ -1,0 +1,13 @@
+name = "cloudmail-security-test"
+main = "src/index.js"
+compatibility_date = "2025-03-10"
+
+[[kv_namespaces]]
+binding = "kv"
+id = "00000000000000000000000000000000"
+
+[vars]
+domain = ["echoec.com"]
+admin = "admin@echoec.com"
+ALLOW_PUBLIC_REGISTRATION = "false"
+ALLOWED_ORIGINS = "https://cloudmail.echoec.com"

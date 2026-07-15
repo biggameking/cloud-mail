@@ -1,0 +1,49 @@
+name = "cloudmail-echoec"
+account_id = "a0ad4d75c38c21f63cbd49bb8cdd4a22"
+main = "src/index.js"
+compatibility_date = "2026-07-14"
+workers_dev = false
+preview_urls = false
+keep_vars = true
+
+[[routes]]
+pattern = "cloudmail.echoec.com"
+custom_domain = true
+
+[[d1_databases]]
+binding = "db"
+database_name = "cloudmail-echoec-db"
+database_id = "21749445-43a8-413c-88cd-ae6d76ec36dc"
+
+[[kv_namespaces]]
+binding = "kv"
+id = "55b3b01537f64c70bcab450ab7ce502a"
+
+[[r2_buckets]]
+binding = "r2"
+bucket_name = "cloudmail-echoec-attachments"
+
+[assets]
+binding = "assets"
+directory = "./dist"
+not_found_handling = "single-page-application"
+run_worker_first = true
+
+[triggers]
+crons = ["0 16 * * *"]
+
+[observability]
+enabled = true
+head_sampling_rate = 0.05
+
+[vars]
+domain = ["echoec.com"]
+admin = "admin@echoec.com"
+ALLOWED_ORIGINS = "https://cloudmail.echoec.com"
+ALLOW_PUBLIC_REGISTRATION = "false"
+ENABLE_BOOTSTRAP = "true"
+project_link = false
+linuxdo_switch = false
+
+[build]
+command = "pnpm --prefix ../mail-vue install --frozen-lockfile && pnpm --prefix ../mail-vue run build"

@@ -1,7 +1,7 @@
 class BizError extends Error {
 	constructor(message, code) {
 		super(message);
-		this.code = code ? code : 501;
+		this.code = code ?? 400;
 		this.name = 'BizError';
 	}
 }

@@ -17,11 +17,24 @@ export default {
 			return app.fetch(req, env, ctx);
 		}
 
-		 if (['/static/','/attachments/'].some(p => url.pathname.startsWith(p))) {
-			 return await kvObjService.toObjResp( { env }, url.pathname.substring(1));
-		 }
+		if (url.pathname.startsWith('/static/')) {
+			const staticResponse = await kvObjService.toObjResp({ env }, url.pathname.substring(1));
+			if (!staticResponse) return new Response('Not found', { status: 404 });
+			const headers = new Headers(staticResponse.headers);
+			headers.set('Content-Security-Policy', "default-src 'none'; sandbox");
+			headers.set('X-Content-Type-Options', 'nosniff');
+			headers.set('Cross-Origin-Resource-Policy', 'same-origin');
+			return new Response(staticResponse.body, { status: staticResponse.status, headers });
+		}
 
-		return env.assets.fetch(req);
+		const assetResponse = await env.assets.fetch(req);
+		const headers = new Headers(assetResponse.headers);
+		headers.set('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
+		headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+		headers.set('X-Content-Type-Options', 'nosniff');
+		headers.set('Referrer-Policy', 'no-referrer');
+		headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+		return new Response(assetResponse.body, { status: assetResponse.status, statusText: assetResponse.statusText, headers });
 	},
 	email: email,
 	async scheduled(c, env, ctx) {
