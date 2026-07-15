@@ -15,6 +15,7 @@ import aiRetentionService from '../src/service/ai-retention-service';
 import { localDateKey, nextDailyRun } from '../src/ai/ai-schedule';
 import aiSafetyEmails from '../test-fixtures/ai-safety-emails';
 import { buildDigestPrompt, PROMPT_VERSION } from '../src/ai/ai-prompt';
+import { generateValidatedDigest, JSON_REPAIR_INSTRUCTION } from '../src/ai/ai-inference';
 
 describe('AI monitoring foundation', () => {
 	it('is strictly disabled unless explicitly enabled', async () => {
@@ -85,6 +86,51 @@ describe('AI monitoring foundation', () => {
 		const [, request] = run.mock.calls[0];
 		expect(request.response_format).toEqual({ type: 'json_object' });
 		expect(request.tools).toBeUndefined();
+	});
+
+	it('retries invalid JSON once with the same email input only after reserving budget', async () => {
+		const valid = {title: '摘要', overview: '概览', items: []};
+		const generateDigest = vi.fn()
+			.mockResolvedValueOnce({response: 'not-json'})
+			.mockResolvedValueOnce({response: JSON.stringify(valid)});
+		const reserveRetry = vi.fn().mockResolvedValue(true);
+		const result = await generateValidatedDigest({
+			provider: {generateDigest}, systemPrompt: 'safe-system', userPrompt: 'same-untrusted-input',
+			allowedEmailIds: [], reserveRetry
+		});
+		expect(result).toMatchObject({digest: valid, retried: true, retryReason: 'invalid_output'});
+		expect(reserveRetry).toHaveBeenCalledWith({reason: 'invalid_output'});
+		expect(generateDigest).toHaveBeenCalledTimes(2);
+		expect(generateDigest.mock.calls[0][0].userPrompt).toBe('same-untrusted-input');
+		expect(generateDigest.mock.calls[1][0].userPrompt).toBe('same-untrusted-input');
+		expect(generateDigest.mock.calls[1][0].systemPrompt).toContain(JSON_REPAIR_INSTRUCTION);
+	});
+
+	it('retries one transient provider failure but never retries a non-transient failure', async () => {
+		const valid = {title: '摘要', overview: '概览', items: []};
+		const timeout = Object.assign(new Error('request timed out'), {name: 'TimeoutError'});
+		const transientProvider = {generateDigest: vi.fn().mockRejectedValueOnce(timeout).mockResolvedValueOnce({response: JSON.stringify(valid)})};
+		const reserveRetry = vi.fn().mockResolvedValue(true);
+		expect(await generateValidatedDigest({
+			provider: transientProvider, systemPrompt: 'safe-system', userPrompt: 'input', allowedEmailIds: [], reserveRetry
+		})).toMatchObject({retried: true, retryReason: 'transient_provider'});
+		expect(transientProvider.generateDigest).toHaveBeenCalledTimes(2);
+
+		const permanentError = Object.assign(new Error('bad request'), {status: 400});
+		const permanentProvider = {generateDigest: vi.fn().mockRejectedValue(permanentError)};
+		await expect(generateValidatedDigest({
+			provider: permanentProvider, systemPrompt: 'safe-system', userPrompt: 'input', allowedEmailIds: [], reserveRetry
+		})).rejects.toBe(permanentError);
+		expect(permanentProvider.generateDigest).toHaveBeenCalledOnce();
+	});
+
+	it('does not retry when the second model call cannot reserve budget', async () => {
+		const invalidOutput = {response: 'not-json'};
+		const provider = {generateDigest: vi.fn().mockResolvedValue(invalidOutput)};
+		await expect(generateValidatedDigest({
+			provider, systemPrompt: 'safe-system', userPrompt: 'input', allowedEmailIds: [], reserveRetry: vi.fn().mockResolvedValue(false)
+		})).rejects.toThrow();
+		expect(provider.generateDigest).toHaveBeenCalledOnce();
 	});
 
 	it('requires Simplified Chinese output independently of source language', () => {
@@ -477,11 +523,15 @@ describe('AI monitoring foundation', () => {
 	it('escapes all model text in the outbound digest', () => {
 		expect(escapeHtml('<script>alert(1)</script>')).not.toContain('<script>');
 		const rendered = renderDigestEmail({
-			title: '<img src=x>', overview: 'safe',
-			content_json: JSON.stringify({items: [{priority: 'high', category: 'other', summary: '<script>x</script>', actions: []}]})
+			digest_id: 3, title: '<img src=x>', overview: 'safe',
+			content_json: JSON.stringify({items: [{emailId: 7, priority: 'high', category: 'other', summary: '<script>x</script>', actions: []}]})
 		});
 		expect(rendered.html).not.toContain('<script>');
 		expect(rendered.html).not.toContain('<img src=x>');
+		expect(rendered.html).toContain('https://cloudmail.echoec.com/ai-digest?digestId=3&amp;emailId=7');
+		expect(rendered.text).toContain('https://cloudmail.echoec.com/ai-digest?digestId=3&emailId=7');
+		expect(rendered.html).not.toMatch(/<img\b/i);
+		expect(rendered.html).not.toMatch(/href="https:\/\/(?!cloudmail\.echoec\.com)/i);
 	});
 
 	it('claims a scheduled window before inference and skips duplicates', async () => {

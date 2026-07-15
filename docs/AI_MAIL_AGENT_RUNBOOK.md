@@ -38,9 +38,11 @@ Workers AI 通过 Wrangler 的 `ai` binding 使用，不需要也不允许配置
 - `(monitor_id, period_start, period_end)` 唯一约束会在查询邮件和调用模型前占用运行窗口；重复 Cron 不会重复推理。
 - 预算通过 D1 条件 UPSERT 原子预占，默认每天最多 4 次调用，并同时限制输入、输出和估算 Neurons。
 - 只有结构化输出校验和摘要落库全部成功后才推进 `last_processed_email_id`。
+- 模型超时/5xx 或结构化输出校验失败时最多重试 1 次；第二次调用必须先再次通过 D1 原子预算预占。4xx、配额不足或预算预占失败不重试，原始模型响应不写日志。
 - 摘要投递使用固定的 `send_email.destination_address`；API 请求不能指定目标地址。
 - 自动投递必须同时满足环境许可、数据库总开关、全局投递开关和规则级“自动投递”四层条件。规则关闭或取消自动投递后，历史待重试摘要也不会被后台再次发送；管理员仍可显式发送单份摘要。
 - 发送失败只更新 `delivery_status` 并最多重试 3 次，不会重新调用模型。
+- HTML 与纯文本摘要中的每个来源链接只指向 `https://cloudmail.echoec.com/ai-digest`，携带摘要 ID 和源邮件 ID；登录并完成实时权限检查后在当前 Webmail 打开源邮件，不包含外部追踪图片。
 
 正式启用前使用 `wrangler secret put AI_DIGEST_DESTINATION_SECRET` 配置唯一目标，并确认该地址已在 Cloudflare Email Routing 中验证。`send_email` binding 不在 Git 中记录地址，API 请求也不能覆盖 Secret。Cloudflare 官方说明：已验证目标地址可在包括 Free 在内的计划上通过 Workers binding 免费发送。
 

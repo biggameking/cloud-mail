@@ -6,18 +6,22 @@ const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, character =>
 	'&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
 })[character]);
 
+const CLOUDMAIL_ORIGIN = 'https://cloudmail.echoec.com';
+
 const renderDigestEmail = digest => {
 	const content = JSON.parse(digest.content_json);
 	const items = content.items.map(item => {
 		const actions = item.actions.length
 			? `<ul>${item.actions.map(action => `<li>${escapeHtml(action.text)}</li>`).join('')}</ul>`
 			: '';
-		return `<article style="padding:16px 0;border-bottom:1px solid #e5e7eb"><div style="font-size:12px;color:#64748b">${escapeHtml(t(`aiPriority_${item.priority}`))} · ${escapeHtml(t(`aiCategory_${item.category}`))}</div><p style="margin:8px 0;line-height:1.6">${escapeHtml(item.summary)}</p>${actions}</article>`;
+		const sourceUrl = `${CLOUDMAIL_ORIGIN}/ai-digest?digestId=${encodeURIComponent(digest.digest_id)}&emailId=${encodeURIComponent(item.emailId)}`;
+		return `<article style="padding:16px 0;border-bottom:1px solid #e5e7eb"><div style="font-size:12px;color:#64748b">${escapeHtml(t(`aiPriority_${item.priority}`))} · ${escapeHtml(t(`aiCategory_${item.category}`))}</div><p style="margin:8px 0;line-height:1.6">${escapeHtml(item.summary)}</p>${actions}<p style="margin:12px 0 0"><a href="${escapeHtml(sourceUrl)}" style="color:#1677ff;text-decoration:none">${escapeHtml(t('aiDigestOpenSource'))}</a></p></article>`;
 	}).join('');
 	const html = `<!doctype html><html><body style="margin:0;background:#f6f7f9;font-family:Arial,sans-serif;color:#172033"><main style="max-width:680px;margin:0 auto;padding:28px 20px"><div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:24px"><div style="font-size:12px;font-weight:700;color:#1677ff">CLOUD MAIL · AI DIGEST</div><h1 style="font-size:24px;margin:8px 0 12px">${escapeHtml(digest.title)}</h1><p style="line-height:1.7;color:#475569">${escapeHtml(digest.overview)}</p>${items}<p style="margin:20px 0 0;font-size:12px;color:#64748b">${escapeHtml(t('aiDigestEmailDisclaimer'))}</p></div></main></body></html>`;
 	const text = [digest.title, digest.overview, ...content.items.flatMap(item => [
 		`[${item.priority}/${item.category}] ${item.summary}`,
-		...item.actions.map(action => `- ${action.text}`)
+		...item.actions.map(action => `- ${action.text}`),
+		`${t('aiDigestOpenSource')}: ${CLOUDMAIL_ORIGIN}/ai-digest?digestId=${encodeURIComponent(digest.digest_id)}&emailId=${encodeURIComponent(item.emailId)}`
 	]), t('aiDigestEmailDisclaimer')].join('\n\n');
 	return { html, text };
 };
@@ -89,5 +93,5 @@ const aiDeliveryService = {
 	}
 };
 
-export { escapeHtml, renderDigestEmail };
+export { CLOUDMAIL_ORIGIN, escapeHtml, renderDigestEmail };
 export default aiDeliveryService;

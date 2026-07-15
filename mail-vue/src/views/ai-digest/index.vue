@@ -153,6 +153,12 @@ const alerts = computed(() => {
 onMounted(async () => {
   await Promise.all([loadMonitors(), loadDigests(), loadUsage(), loadSystem(), loadRuns()])
   if (initialAccountId.value) openCreate()
+  const linkedDigestId = Number(route.query.digestId) || 0
+  const linkedEmailId = Number(route.query.emailId) || 0
+  if (linkedDigestId) {
+    await openDigest(linkedDigestId)
+    if (linkedEmailId) await openSource(linkedEmailId)
+  }
 })
 
 async function loadMonitors() {

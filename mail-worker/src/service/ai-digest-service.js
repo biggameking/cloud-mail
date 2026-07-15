@@ -3,9 +3,9 @@ import aiMonitorService, { assertAdminAiAccess } from './ai-monitor-service';
 import { getAiConfig } from '../ai/ai-config';
 import { normalizeEmailForAi } from '../ai/email-normalizer';
 import { buildDigestPrompt, DIGEST_SYSTEM_PROMPT, PROMPT_VERSION } from '../ai/ai-prompt';
-import { validateDigestOutput } from '../ai/ai-output-validator';
 import { checkAiBudget, estimateNeurons, estimateTokens } from '../ai/ai-budget';
 import WorkersAiProvider from '../ai/workers-ai-provider';
+import { generateValidatedDigest } from '../ai/ai-inference';
 import { t } from '../i18n/i18n';
 
 const todayUtc = () => new Date().toISOString().slice(0, 10);
@@ -284,12 +284,22 @@ const aiDigestService = {
 
 		try {
 			const provider = new WorkersAiProvider(c.env.ai, config.model);
-			const raw = await provider.generateDigest({ systemPrompt: DIGEST_SYSTEM_PROMPT, userPrompt });
+			const inference = await generateValidatedDigest({
+				provider,
+				systemPrompt: DIGEST_SYSTEM_PROMPT,
+				userPrompt,
+				allowedEmailIds: emails.map(email => email.emailId),
+				reserveRetry: () => this.reserveUsage(c, config, {
+					inputTokens: estimatedInputTokens,
+					outputTokens: 2048,
+					estimatedNeurons: estimateNeurons({ inputTokens: estimatedInputTokens, outputTokens: 2048 })
+				})
+			});
+			const { raw, digest } = inference;
 			const providerContent = typeof raw === 'string' ? raw : raw?.response;
 			const rawContent = typeof providerContent === 'string' ? providerContent : JSON.stringify(providerContent || '');
 			const inputTokens = Number(raw?.usage?.prompt_tokens) || estimatedInputTokens;
 			const outputTokens = Number(raw?.usage?.completion_tokens) || estimateTokens(rawContent.length);
-			const digest = validateDigestOutput(raw, emails.map(email => email.emailId));
 			if (monitor.categoryFilter?.length) digest.items = digest.items.filter(item => monitor.categoryFilter.includes(item.category));
 			const importantCount = digest.items.filter(item => item.priority === 'high').length;
 			const actionCount = digest.items.reduce((total, item) => total + item.actions.length, 0);
