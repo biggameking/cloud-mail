@@ -1,4 +1,5 @@
 const zh = {
+	aiInvalidDigestFilter: '摘要筛选条件无效',
 	IncorrectPwd: '密码输入错误',
 	addAccountDisabled: '添加邮箱功能已关闭',
 	regDisabled: '注册功能已关闭',

@@ -1,4 +1,5 @@
 const en = {
+	aiInvalidDigestFilter: 'Invalid digest filter',
 	IncorrectPwd: 'Incorrect password',
 	addAccountDisabled: 'Add Email Address feature is disabled',
 	regDisabled: 'Sign up is disabled',

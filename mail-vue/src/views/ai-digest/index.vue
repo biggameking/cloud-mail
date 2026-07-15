@@ -66,14 +66,33 @@
 
     <section class="section-block">
       <div class="section-heading"><div><h2>{{ $t('aiDigestFeed') }}</h2><p>{{ $t('aiDigestFeedDesc') }}</p></div></div>
+      <div class="digest-filters">
+        <el-select v-model="digestFilters.monitorId" clearable :placeholder="$t('aiFilterByMonitor')">
+          <el-option v-for="monitor in monitors" :key="monitor.monitorId" :label="monitor.name" :value="monitor.monitorId"/>
+        </el-select>
+        <el-select v-model="digestFilters.accountId" clearable filterable :placeholder="$t('aiFilterByMailbox')">
+          <el-option v-for="account in accounts" :key="account.accountId" :label="account.email" :value="account.accountId"/>
+        </el-select>
+        <el-date-picker v-model="digestFilters.dateRange" type="daterange" value-format="YYYY-MM-DD"
+                        :start-placeholder="$t('aiDateFrom')" :end-placeholder="$t('aiDateTo')"/>
+        <el-select v-model="digestFilters.priority" clearable :placeholder="$t('aiFilterByPriority')">
+          <el-option v-for="priority in priorities" :key="priority" :label="$t(`aiPriority_${priority}`)" :value="priority"/>
+        </el-select>
+        <div class="filter-actions">
+          <el-button type="primary" :loading="loadingDigests" @click="loadDigests">{{ $t('aiApplyFilters') }}</el-button>
+          <el-button @click="resetDigestFilters">{{ $t('reset') }}</el-button>
+        </div>
+      </div>
       <el-empty v-if="!digests.length" :description="$t('aiNoDigests')"/>
       <div class="digest-list" v-else>
         <button v-for="digest in digests" :key="digest.digestId" class="digest-row" type="button" @click="openDigest(digest.digestId)">
           <span class="digest-mark"><Icon icon="hugeicons:ai-magic" width="20"/></span>
-          <span class="digest-copy"><strong>{{ digest.title }}</strong><small>{{ digest.monitorName }} · {{ formatTime(digest.createdAt) }}</small><span>{{ digest.overview }}</span></span>
+          <span class="digest-copy"><strong>{{ digest.title }}</strong><small>{{ digest.monitorName }} · {{ formatDigestWindow(digest) }}</small><span>{{ digest.overview }}</span></span>
           <span class="digest-stats">
             <el-tag size="small" :type="deliveryType(digest.deliveryStatus)">{{ $t(`aiDelivery_${digest.deliveryStatus}`) }}</el-tag>
-            <el-tag v-if="digest.importantCount" type="danger">{{ $t('aiImportantCount', {count: digest.importantCount}) }}</el-tag>
+            <el-tag size="small" type="info">{{ $t('aiEmailCount', {count: digest.emailCount || 0}) }}</el-tag>
+            <el-tag :type="digest.importantCount ? 'danger' : 'info'">{{ $t('aiImportantCount', {count: digest.importantCount || 0}) }}</el-tag>
+            <el-tag :type="digest.actionCount ? 'warning' : 'info'">{{ $t('aiActionCount', {count: digest.actionCount || 0}) }}</el-tag>
             <Icon icon="ep:arrow-right"/>
           </span>
         </button>
@@ -88,6 +107,11 @@
           <el-button size="small" type="danger" plain @click="deleteDigest">{{ $t('delete') }}</el-button>
         </div>
         <el-alert v-if="activeDigest.backlogCount" :title="$t('aiPartialDigest', {count: activeDigest.backlogCount})" type="warning" :closable="false" show-icon/>
+        <div class="digest-detail-meta">
+          <span>{{ $t('aiGeneratedAt') }}: {{ formatTime(activeDigest.createdAt) }}</span>
+          <span>{{ $t('aiModel') }}: {{ activeDigest.model }}</span>
+          <span>{{ $t('aiPromptVersion') }}: {{ activeDigest.promptVersion }}</span>
+        </div>
         <p class="overview">{{ activeDigest.overview }}</p>
         <article v-for="item in activeDigest.items" :key="item.emailId" class="source-card">
           <div class="source-head"><el-tag :type="priorityType(item.priority)">{{ $t(`aiPriority_${item.priority}`) }}</el-tag><span>{{ $t(`aiCategory_${item.category}`) }}</span></div>
@@ -123,6 +147,9 @@ const emailStore = useEmailStore()
 const monitors = ref([])
 const accounts = ref([])
 const digests = ref([])
+const loadingDigests = ref(false)
+const priorities = ['high', 'medium', 'low']
+const digestFilters = ref({monitorId: null, accountId: null, dateRange: null, priority: null})
 const usage = ref(null)
 const system = ref({environmentEnabled: false, enabled: false, deliveryEnabled: false})
 const runs = ref([])
@@ -166,14 +193,39 @@ async function loadMonitors() {
   try { [monitors.value, accounts.value] = await Promise.all([aiMonitorList(), aiMonitorAccounts()]) }
   finally { loading.value = false }
 }
-async function loadDigests() { digests.value = await aiDigestList() }
+async function loadDigests() {
+  loadingDigests.value = true
+  try {
+    const [dateFrom, dateTo] = digestFilters.value.dateRange || []
+    digests.value = await aiDigestList({
+      monitorId: digestFilters.value.monitorId || undefined,
+      accountId: digestFilters.value.accountId || undefined,
+      priority: digestFilters.value.priority || undefined,
+      dateFrom,
+      dateTo
+    })
+  } finally { loadingDigests.value = false }
+}
 async function loadUsage() { loadingUsage.value = true; try { usage.value = await aiUsageToday() } finally { loadingUsage.value = false } }
 async function loadSystem() { system.value = await aiSystemState() }
 async function loadRuns() { runs.value = await aiRunList() }
 function openCreate() { editingMonitor.value = null; dialogOpen.value = true }
 function openEdit(monitor) { editingMonitor.value = monitor; dialogOpen.value = true }
 function accountLabel(ids) { return ids.map(id => accounts.value.find(account => account.accountId === id)?.email).filter(Boolean).join(' · ') }
-function formatTime(value) { return value ? new Intl.DateTimeFormat(undefined, {dateStyle: 'medium', timeStyle: 'short'}).format(new Date(`${value.replace(' ', 'T')}Z`)) : '' }
+function formatTime(value) {
+  if (!value) return ''
+  const timestamp = value.includes('T') ? value : value.replace(' ', 'T')
+  const normalized = /(?:Z|[+-]\d{2}:\d{2})$/.test(timestamp) ? timestamp : `${timestamp}Z`
+  return new Intl.DateTimeFormat(undefined, {dateStyle: 'medium', timeStyle: 'short'}).format(new Date(normalized))
+}
+function formatDigestWindow(digest) {
+  if (!digest.periodStart || digest.periodStart.startsWith('manual:')) return formatTime(digest.createdAt)
+  return `${formatTime(digest.periodStart)} – ${formatTime(digest.periodEnd)}`
+}
+async function resetDigestFilters() {
+  digestFilters.value = {monitorId: null, accountId: null, dateRange: null, priority: null}
+  await loadDigests()
+}
 function priorityType(priority) { return priority === 'high' ? 'danger' : priority === 'medium' ? 'warning' : 'info' }
 function deliveryType(status) { return status === 'sent' ? 'success' : status === 'failed' ? 'danger' : 'info' }
 function runStatusType(status) { return ['succeeded', 'partial'].includes(status) ? 'success' : status === 'failed' ? 'danger' : status === 'skipped' ? 'warning' : 'info' }
@@ -270,6 +322,8 @@ async function openSource(emailId) {
 .monitor-meta { display: flex; flex-wrap: wrap; gap: 12px; margin: 20px 0; color: var(--secondary-text-color); font-size: 12px; }
 .monitor-meta span { display: inline-flex; align-items: center; gap: 5px; }
 .monitor-actions { display: flex; align-items: center; flex-wrap: wrap; }
+.digest-filters { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(190px, 1.2fr) minmax(260px, 1.5fr) minmax(150px, 1fr) auto; gap: 10px; margin-bottom: 12px; padding: 14px; border: 1px solid var(--el-border-color-lighter); border-radius: 12px; background: var(--el-bg-color); }
+.filter-actions { display: flex; align-items: center; }
 .digest-list { overflow: hidden; border: 1px solid var(--el-border-color-lighter); border-radius: 12px; background: var(--el-bg-color); }
 .digest-row { width: 100%; display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 16px 18px; border: 0; border-bottom: 1px solid var(--el-border-color-lighter); background: transparent; color: inherit; text-align: left; cursor: pointer; }
 .digest-row:last-child { border-bottom: 0; }
@@ -280,6 +334,7 @@ async function openSource(emailId) {
 .digest-copy span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .digest-stats { display: flex; align-items: center; gap: 10px; }
 .overview { padding: 16px; border-radius: 10px; background: var(--el-fill-color-light); line-height: 1.7; }
+.digest-detail-meta { display: flex; flex-wrap: wrap; gap: 8px 18px; color: var(--secondary-text-color); font-size: 12px; }
 .detail-actions { display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 12px; }
 .run-table { border-radius: 12px; }
 .source-card { padding: 18px 0; border-bottom: 1px solid var(--el-border-color-lighter); }
@@ -287,5 +342,6 @@ async function openSource(emailId) {
 .source-card h3 { margin: 10px 0 8px; }
 .source-card p, .source-card li { line-height: 1.65; }
 .source-link { border: 0; padding: 0; display: inline-flex; align-items: center; gap: 5px; color: var(--el-color-primary); background: transparent; cursor: pointer; }
-@media (max-width: 767px) { .ai-page { padding: 18px 14px; } .page-header { display: block; } .page-header .el-button { margin-top: 14px; } .system-card { display: block; } .system-switches { justify-items: start; margin-top: 14px; } .digest-row { grid-template-columns: 38px minmax(0, 1fr); } .digest-stats { display: none; } .run-table { overflow-x: auto; } }
+@media (max-width: 1000px) { .digest-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 767px) { .ai-page { padding: 18px 14px; } .page-header { display: block; } .page-header .el-button { margin-top: 14px; } .system-card { display: block; } .system-switches { justify-items: start; margin-top: 14px; } .digest-filters { grid-template-columns: 1fr; } .digest-row { grid-template-columns: 38px minmax(0, 1fr); } .digest-stats { display: none; } .run-table { overflow-x: auto; } }
 </style>

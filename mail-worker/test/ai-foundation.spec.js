@@ -16,6 +16,7 @@ import { localDateKey, nextDailyRun } from '../src/ai/ai-schedule';
 import aiSafetyEmails from '../test-fixtures/ai-safety-emails';
 import { buildDigestPrompt, PROMPT_VERSION } from '../src/ai/ai-prompt';
 import { generateValidatedDigest, JSON_REPAIR_INSTRUCTION } from '../src/ai/ai-inference';
+import { normalizeDigestFilters } from '../src/ai/ai-digest-filter';
 
 describe('AI monitoring foundation', () => {
 	it('is strictly disabled unless explicitly enabled', async () => {
@@ -482,6 +483,30 @@ describe('AI monitoring foundation', () => {
 		getMonitor.mockRestore();
 	});
 
+	it('validates digest feed filters and rejects malformed ranges', () => {
+		expect(normalizeDigestFilters({monitorId: '2', accountId: '4', priority: 'high', dateFrom: '2026-07-01', dateTo: '2026-07-15'}))
+			.toEqual({monitorId: 2, accountId: 4, priority: 'high', dateFrom: '2026-07-01', dateTo: '2026-07-15'});
+		expect(() => normalizeDigestFilters({priority: 'urgent'})).toThrow();
+		expect(() => normalizeDigestFilters({dateFrom: '2026-07-31', dateTo: '2026-07-01'})).toThrow();
+		expect(() => normalizeDigestFilters({dateFrom: '2026-02-30'})).toThrow();
+	});
+
+	it('parameterizes digest feed filters without selecting message content', async () => {
+		let statement;
+		let values;
+		const db = {prepare: vi.fn(sql => {
+			statement = sql;
+			return {bind(...params) { values = params; return this; }, all: async () => ({results: []})};
+		})};
+		const context = {env: {admin: 'admin@echoec.com', db}, get: () => ({email: 'admin@echoec.com'})};
+		await aiDigestService.list(context, {monitorId: '2', accountId: '4', priority: 'high', dateFrom: '2026-07-01', dateTo: '2026-07-15'});
+		expect(statement).toMatch(/d\.monitor_id = \?/);
+		expect(statement).toMatch(/mailbox_email\.account_id = \?/);
+		expect(statement).toMatch(/priority_source\.priority = \?/);
+		expect(statement).not.toMatch(/e\.content|e\.text|e\.subject/);
+		expect(values).toEqual([2, 4, 'high', '2026-07-01', '2026-07-15']);
+	});
+
 	it('rechecks active mailbox and user state before exposing historical digest sources', async () => {
 		const statements = [];
 		const db = {prepare: vi.fn(sql => {
@@ -491,6 +516,7 @@ describe('AI monitoring foundation', () => {
 				first: async () => sql.includes('FROM ai_digest d') ? {
 					digest_id: 1, monitor_id: 1, monitor_name: 'Daily', title: 'Digest', overview: 'Overview',
 					important_count: 0, action_count: 0, run_status: 'succeeded', backlog_count: 0,
+					model: '@cf/test', prompt_version: 'digest-v1',
 					delivery_status: 'not_requested', delivery_attempts: 0, retained: 0, created_at: '2026-07-15 00:00:00'
 				} : null,
 				all: async () => ({results: []})
@@ -499,6 +525,7 @@ describe('AI monitoring foundation', () => {
 		const context = {env: {admin: 'admin@echoec.com', db}, get: () => ({email: 'admin@echoec.com'})};
 		const detail = await aiDigestService.detail(context, 1);
 		expect(detail.items).toEqual([]);
+		expect(detail).toMatchObject({model: '@cf/test', promptVersion: 'digest-v1'});
 		const sourceQuery = statements.find(sql => /FROM ai_digest_source s/i.test(sql));
 		expect(sourceQuery).toMatch(/JOIN account a/i);
 		expect(sourceQuery).toMatch(/JOIN user u/i);

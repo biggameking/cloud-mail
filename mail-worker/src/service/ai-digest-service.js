@@ -6,6 +6,7 @@ import { buildDigestPrompt, DIGEST_SYSTEM_PROMPT, PROMPT_VERSION } from '../ai/a
 import { checkAiBudget, estimateNeurons, estimateTokens } from '../ai/ai-budget';
 import WorkersAiProvider from '../ai/workers-ai-provider';
 import { generateValidatedDigest } from '../ai/ai-inference';
+import { normalizeDigestFilters } from '../ai/ai-digest-filter';
 import { t } from '../i18n/i18n';
 
 const todayUtc = () => new Date().toISOString().slice(0, 10);
@@ -89,14 +90,41 @@ const aiDigestService = {
 		};
 	},
 
-	async list(c) {
+	async list(c, query = {}) {
 		assertAdminAiAccess(c);
+		const filters = normalizeDigestFilters(query);
+		const clauses = [];
+		const bindings = [];
+		if (filters.monitorId) {
+			clauses.push('d.monitor_id = ?');
+			bindings.push(filters.monitorId);
+		}
+		if (filters.accountId) {
+			clauses.push(`EXISTS (SELECT 1 FROM ai_digest_source mailbox_source
+				JOIN email mailbox_email ON mailbox_email.email_id = mailbox_source.email_id
+				WHERE mailbox_source.digest_id = d.digest_id AND mailbox_email.account_id = ?)`);
+			bindings.push(filters.accountId);
+		}
+		if (filters.priority) {
+			clauses.push(`EXISTS (SELECT 1 FROM ai_digest_source priority_source
+				WHERE priority_source.digest_id = d.digest_id AND priority_source.priority = ?)`);
+			bindings.push(filters.priority);
+		}
+		if (filters.dateFrom) {
+			clauses.push('date(d.created_at) >= ?');
+			bindings.push(filters.dateFrom);
+		}
+		if (filters.dateTo) {
+			clauses.push('date(d.created_at) <= ?');
+			bindings.push(filters.dateTo);
+		}
+		const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
 		const { results } = await c.env.db.prepare(`SELECT d.digest_id AS digestId, d.monitor_id AS monitorId,
 			d.title, d.overview, d.important_count AS importantCount, d.action_count AS actionCount,
 			d.delivery_status AS deliveryStatus, d.delivery_attempts AS deliveryAttempts, d.retained, d.created_at AS createdAt, m.name AS monitorName,
-			r.status AS runStatus
+			r.status AS runStatus, r.email_count AS emailCount, r.period_start AS periodStart, r.period_end AS periodEnd
 			FROM ai_digest d JOIN ai_monitor m ON m.monitor_id = d.monitor_id JOIN ai_digest_run r ON r.run_id = d.run_id
-			ORDER BY d.digest_id DESC LIMIT 100`).all();
+			${where} ORDER BY d.digest_id DESC LIMIT 100`).bind(...bindings).all();
 		return results;
 	},
 
@@ -132,7 +160,8 @@ const aiDigestService = {
 		assertAdminAiAccess(c);
 		const id = Number(digestId);
 		if (!Number.isInteger(id) || id <= 0) throw new BizError(t('aiInvalidDigest'), 400);
-		const digest = await c.env.db.prepare(`SELECT d.*, m.name AS monitor_name, r.status AS run_status, r.backlog_count
+		const digest = await c.env.db.prepare(`SELECT d.*, m.name AS monitor_name, r.status AS run_status, r.backlog_count,
+			r.model, r.prompt_version
 			FROM ai_digest d JOIN ai_monitor m ON m.monitor_id = d.monitor_id
 			JOIN ai_digest_run r ON r.run_id = d.run_id WHERE d.digest_id = ?`).bind(id).first();
 		if (!digest) throw new BizError(t('aiDigestNotFound'), 404);
@@ -153,6 +182,8 @@ const aiDigestService = {
 			items: sources.map(source => ({ ...source, actions: JSON.parse(source.actionJson || '[]'), actionJson: undefined })),
 			importantCount: digest.important_count,
 			actionCount: digest.action_count,
+			model: digest.model,
+			promptVersion: digest.prompt_version,
 			runStatus: digest.run_status,
 			backlogCount: digest.backlog_count,
 			deliveryStatus: digest.delivery_status,
