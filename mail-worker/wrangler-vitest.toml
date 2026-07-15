@@ -11,3 +11,4 @@ domain = ["echoec.com"]
 admin = "admin@echoec.com"
 ALLOW_PUBLIC_REGISTRATION = "false"
 ALLOWED_ORIGINS = "https://cloudmail.echoec.com"
+AI_MONITOR_ENABLED = "false"

@@ -23,6 +23,9 @@ id = "55b3b01537f64c70bcab450ab7ce502a"
 binding = "r2"
 bucket_name = "cloudmail-echoec-attachments"
 
+[ai]
+binding = "ai"
+
 [assets]
 binding = "assets"
 directory = "./dist"
@@ -44,6 +47,12 @@ ALLOW_PUBLIC_REGISTRATION = "false"
 ENABLE_BOOTSTRAP = "false"
 project_link = false
 linuxdo_switch = false
+AI_MONITOR_ENABLED = "false"
+AI_MONITOR_MODEL = "@cf/qwen/qwen3-30b-a3b-fp8"
+AI_MAX_DAILY_CALLS = "4"
+AI_MAX_DAILY_INPUT_TOKENS = "500000"
+AI_MAX_DAILY_OUTPUT_TOKENS = "20000"
+AI_MAX_DAILY_ESTIMATED_NEURONS = "7000"
 
 [build]
 command = "pnpm --prefix ../mail-vue install --frozen-lockfile && pnpm --prefix ../mail-vue run build"
