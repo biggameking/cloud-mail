@@ -19,4 +19,6 @@ import '../api/init-api'
 import '../api/analysis-api'
 import '../api/reg-key-api'
 import '../api/telegram-api'
+import '../api/ai-monitor-api'
+import '../api/ai-digest-api'
 export default app;

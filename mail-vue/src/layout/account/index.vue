@@ -26,7 +26,10 @@
                  @click="changeAccount(item)">
           <div class="account-heading">
             <div class="account">{{ item.email }}</div>
-            <Icon v-if="item.managedUser" class="managed-user-icon" icon="mynaui:user" width="17" height="17"/>
+            <div class="heading-icons">
+              <Icon v-if="item.managedUser" class="managed-user-icon" icon="mynaui:user" width="17" height="17"/>
+              <MonitorIcon v-if="isSuperAdmin" :enabled="aiMonitoredAccountIds.has(item.accountId)" @click="openAiMonitor(item)"/>
+            </div>
           </div>
           <div class="opt">
             <button class="card-icon-button inbox-default-button" type="button" @click.stop="setAllReceive(item)" :title="$t('setDefaultInbox')">
@@ -165,6 +168,7 @@
 <script setup>
 import {Icon} from "@iconify/vue";
 import {computed, nextTick, reactive, ref, watch} from "vue";
+import {useRouter} from "vue-router";
 import {
   accountList,
   accountAdd,
@@ -190,8 +194,11 @@ import {
   adminMailboxSetName,
   adminMailboxUsers
 } from "@/request/admin-mailbox.js";
+import {aiMonitorList} from "@/request/ai-monitor.js";
+import MonitorIcon from "@/components/ai-monitor/monitor-icon.vue";
 
 const {t} = useI18n();
+const router = useRouter();
 const userStore = useUserStore();
 const accountStore = useAccountStore();
 const settingStore = useSettingStore();
@@ -235,6 +242,8 @@ const scopeValue = ref('self')
 const isSuperAdmin = computed(() => userStore.user.type === 0)
 const isSelfScope = computed(() => accountStore.mailboxScope === 'self')
 const aggregateEnabled = computed(() => settingStore.settings.adminAggregateInbox === 0)
+const aiMonitors = ref([])
+const aiMonitoredAccountIds = computed(() => new Set(aiMonitors.value.filter(monitor => monitor.enabled).flatMap(monitor => monitor.accountIds || [])))
 const visibleAccounts = computed(() => isSelfScope.value && isSuperAdmin.value
     ? [...accounts, ...managedAccounts.value]
     : accounts)
@@ -244,6 +253,7 @@ if (hasPerm('account:query')) {
 }
 
 if (isSuperAdmin.value) {
+  aiMonitorList().then(list => aiMonitors.value = list)
   adminMailboxUsers().then(list => {
     mailboxUsers.value = list
     managedAccounts.value = list.filter(item => item.accountId).map(item => ({
@@ -260,6 +270,10 @@ if (isSuperAdmin.value) {
       ownerEmail: item.email
     }))
   })
+}
+
+function openAiMonitor(item) {
+  router.push({name: 'ai-digest', query: {accountId: item.accountId}})
 }
 
 watch(() => accountStore.changeUserAccountName, () => {
@@ -785,6 +799,13 @@ path[fill="#ffdda1"] {
 
     .managed-user-icon {
       color: var(--el-color-primary);
+    }
+
+    .heading-icons {
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 3px;
     }
 
     .opt {

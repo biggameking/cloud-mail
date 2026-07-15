@@ -37,7 +37,13 @@ export function permsToRouter(permKeys) {
 }
 
 const routers = {
-    'email:send': [
+    'ai:manage': [{
+        path: '/ai-digest',
+        name: 'ai-digest',
+        component: () => import('@/views/ai-digest/index.vue'),
+        meta: {title: 'aiDigest', name: 'ai-digest', menu: true}
+    }],
+	'email:send': [
         {
             path: '/sent',
             name: 'send',

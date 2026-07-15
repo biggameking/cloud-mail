@@ -86,6 +86,24 @@
             </div>
           </div>
 
+          <div class="settings-card">
+            <div class="card-title">{{ $t('aiDigest') }}</div>
+            <div class="card-content">
+              <div class="setting-item">
+                <div>
+                  <span>{{ $t('aiMonitoringStatus') }}</span>
+                  <div class="setting-description">{{ $t('aiMonitoringStatusDesc') }}</div>
+                </div>
+                <el-tag :type="aiUsage?.enabled ? 'success' : 'info'">{{ $t(aiUsage?.enabled ? 'enabled' : 'disabled') }}</el-tag>
+              </div>
+              <div class="setting-item">
+                <div><span>{{ $t('aiBudgetToday') }}</span></div>
+                <div>{{ aiUsage?.estimatedNeurons || 0 }} / {{ aiUsage?.limits?.maxDailyEstimatedNeurons || 7000 }}</div>
+              </div>
+              <el-button type="primary" plain style="width: 100%" @click="router.push({name: 'ai-digest'})">{{ $t('aiManageAssistant') }}</el-button>
+            </div>
+          </div>
+
           <!-- Personalization Settings Card -->
           <div class="settings-card">
             <div class="card-title">{{ $t('customization') }}</div>
@@ -832,6 +850,8 @@ import {getTextWidth} from "@/utils/text.js";
 import {fileToBase64} from "@/utils/file-utils.js"
 import {useI18n} from 'vue-i18n';
 import axios from "axios";
+import {useRouter} from "vue-router";
+import {aiUsageToday} from "@/request/ai-digest.js";
 
 defineOptions({
   name: 'sys-setting'
@@ -841,6 +861,8 @@ const currentVersion = 'v3.0.0'
 const hasUpdate = ref(false)
 let getUpdateErrorCount = 1;
 const {t, locale} = useI18n();
+const router = useRouter();
+const aiUsage = ref(null)
 const firstLoading = ref(true)
 const settingReady = ref(false)
 const backgroundImage = ref('')
@@ -950,6 +972,7 @@ const tgMsgLabelWidth = computed(() => locale.value === 'en' ? '120px' : '100px'
 
 getSettings()
 getUpdate()
+aiUsageToday().then(data => aiUsage.value = data)
 
 function getSettings() {
   settingReady.value = false

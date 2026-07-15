@@ -8,7 +8,8 @@ const RULES = [
 	{ method: 'POST', path: '/email/send', limit: 30, windowSeconds: 60 },
 	{ method: 'POST', path: '/account/add', limit: 20, windowSeconds: 3600 },
 	{ method: 'PUT', path: '/account/setForward', limit: 20, windowSeconds: 3600 },
-	{ method: 'POST', path: '/setting/set', limit: 20, windowSeconds: 3600 }
+	{ method: 'POST', path: '/setting/set', limit: 20, windowSeconds: 3600 },
+	{ method: 'POST', path: '/ai/digests/preview', limit: 6, windowSeconds: 3600 }
 ];
 
 async function hashPrincipal(value) {

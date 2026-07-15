@@ -39,6 +39,11 @@ describe('production security baseline', () => {
 		expect(response.status).toBe(401);
 	});
 
+	it('requires authentication for every AI management API', async () => {
+		const response = await SELF.fetch('https://cloudmail.echoec.com/api/ai/monitors');
+		expect(response.status).toBe(401);
+	});
+
 	it('does not treat lookalike authentication paths as public', async () => {
 		const response = await SELF.fetch('https://cloudmail.echoec.com/api/login-attacker');
 		expect(response.status).toBe(401);

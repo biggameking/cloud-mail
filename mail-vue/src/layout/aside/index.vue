@@ -69,6 +69,11 @@
           <Icon icon="eos-icons:system-ok-outlined" width="18" height="18" style="margin-left: 2px" />
           <span class="menu-name" style="margin-left: 22px">{{$t('SystemSettings')}}</span>
         </el-menu-item>
+        <el-menu-item v-if="isSuperAdmin" @click="router.push({name: 'ai-digest'})" index="ai-digest"
+                      :class="route.meta.name === 'ai-digest' ? 'choose-item' : ''">
+          <Icon icon="hugeicons:ai-magic" width="20" height="20"/>
+          <span class="menu-name" style="margin-left: 21px">{{$t('aiDigest')}}</span>
+        </el-menu-item>
       </el-menu>
     </div>
   </el-scrollbar>

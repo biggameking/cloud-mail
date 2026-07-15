@@ -13,12 +13,13 @@ const requireSafeString = (value, field, maxLength, { nullable = false } = {}) =
 
 const parseProviderContent = raw => {
 	const value = typeof raw === 'string' ? raw : raw?.response;
+	if (value && typeof value === 'object' && !Array.isArray(value)) return value;
 	if (typeof value !== 'string' || value.length > 100000) throw new Error('Invalid AI provider response');
 	return JSON.parse(value);
 };
 
 const validateDigestOutput = (raw, allowedEmailIds) => {
-	const value = typeof raw === 'string' || raw?.response ? parseProviderContent(raw) : raw;
+	const value = typeof raw === 'string' || (raw && Object.hasOwn(raw, 'response')) ? parseProviderContent(raw) : raw;
 	if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid AI digest object');
 	const allowed = new Set([...allowedEmailIds].map(Number));
 	if (!Array.isArray(value.items) || value.items.length > Math.min(allowed.size, 200)) throw new Error('Invalid AI digest items');
