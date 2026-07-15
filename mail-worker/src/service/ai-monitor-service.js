@@ -2,6 +2,8 @@ import BizError from '../error/biz-error';
 import { t } from '../i18n/i18n';
 import { nextDailyRun } from '../ai/ai-schedule';
 
+const DIGEST_CATEGORIES = new Set(['action_required', 'deadline', 'notification', 'finance', 'account_security', 'newsletter', 'other']);
+
 const jsonArray = (value, field) => {
 	if (value === undefined) return [];
 	if (!Array.isArray(value) || value.length > 100 || value.some(item => typeof item !== 'string' || item.length > 320)) {
@@ -29,6 +31,7 @@ const parseMonitorRow = row => row ? ({
 	senderAllowlist: JSON.parse(row.sender_allowlist || '[]'),
 	senderBlocklist: JSON.parse(row.sender_blocklist || '[]'),
 	subjectKeywords: JSON.parse(row.subject_keywords || '[]'),
+	categoryFilter: JSON.parse(row.category_filter || '[]'),
 	maxEmailsPerRun: row.max_emails_per_run,
 	maxCharsPerEmail: row.max_chars_per_email,
 	lastProcessedEmailId: row.last_processed_email_id,
@@ -47,6 +50,8 @@ const validateMonitorInput = body => {
 	}
 	const maxEmailsPerRun = Math.min(Math.max(Number(body.maxEmailsPerRun) || 50, 1), 200);
 	const maxCharsPerEmail = Math.min(Math.max(Number(body.maxCharsPerEmail) || 6000, 500), 20000);
+	const categoryFilter = jsonArray(body.categoryFilter, 'categoryFilter');
+	if (categoryFilter.some(category => !DIGEST_CATEGORIES.has(category))) throw new BizError(`${t('aiInvalidFilter')}: categoryFilter`, 400);
 	return {
 		name,
 		enabled: body.enabled === true ? 1 : 0,
@@ -55,6 +60,7 @@ const validateMonitorInput = body => {
 		senderAllowlist: jsonArray(body.senderAllowlist, 'senderAllowlist'),
 		senderBlocklist: jsonArray(body.senderBlocklist, 'senderBlocklist'),
 		subjectKeywords: jsonArray(body.subjectKeywords, 'subjectKeywords'),
+		categoryFilter,
 		maxEmailsPerRun,
 		maxCharsPerEmail
 	};
@@ -62,6 +68,28 @@ const validateMonitorInput = body => {
 
 const aiMonitorService = {
 	assertAdminAiAccess,
+
+	async systemState(c, requireAdmin = true) {
+		if (requireAdmin) assertAdminAiAccess(c);
+		const row = await c.env.db.prepare('SELECT enabled, delivery_enabled, updated_at FROM ai_system_config WHERE config_id = 1').first();
+		return {
+			environmentEnabled: c.env.AI_MONITOR_ENABLED === 'true',
+			enabled: row?.enabled === 1,
+			deliveryEnabled: row?.delivery_enabled === 1,
+			updatedAt: row?.updated_at || null
+		};
+	},
+
+	async updateSystemState(c, body) {
+		assertAdminAiAccess(c);
+		const environmentEnabled = c.env.AI_MONITOR_ENABLED === 'true';
+		const enabled = body.enabled === true;
+		const deliveryEnabled = enabled && body.deliveryEnabled === true;
+		if (enabled && !environmentEnabled) throw new BizError(t('aiEnvironmentDisabled'), 409);
+		await c.env.db.prepare(`UPDATE ai_system_config SET enabled = ?, delivery_enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE config_id = 1`)
+			.bind(enabled ? 1 : 0, deliveryEnabled ? 1 : 0).run();
+		return this.systemState(c);
+	},
 
 	async accounts(c) {
 		assertAdminAiAccess(c);
@@ -112,10 +140,10 @@ const aiMonitorService = {
 		const nextRunAt = input.enabled ? nextDailyRun('08:00', 'Asia/Shanghai') : null;
 		const insert = await c.env.db.prepare(`INSERT INTO ai_monitor (
 			owner_user_id, name, enabled, include_read, sender_allowlist, sender_blocklist,
-			subject_keywords, max_emails_per_run, max_chars_per_email, next_run_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`).bind(
+			subject_keywords, category_filter, max_emails_per_run, max_chars_per_email, next_run_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`).bind(
 			c.get('user').userId, input.name, input.enabled, input.includeRead,
-			JSON.stringify(input.senderAllowlist), JSON.stringify(input.senderBlocklist), JSON.stringify(input.subjectKeywords),
+			JSON.stringify(input.senderAllowlist), JSON.stringify(input.senderBlocklist), JSON.stringify(input.subjectKeywords), JSON.stringify(input.categoryFilter),
 			input.maxEmailsPerRun, input.maxCharsPerEmail, nextRunAt
 		).run();
 		const monitorId = Number(insert.meta.last_row_id);
@@ -134,10 +162,10 @@ const aiMonitorService = {
 		const nextRunAt = input.enabled ? (current.enabled && current.nextRunAt ? current.nextRunAt : nextDailyRun('08:00', 'Asia/Shanghai')) : null;
 		const statements = [
 			c.env.db.prepare(`UPDATE ai_monitor SET name = ?, enabled = ?, include_read = ?, sender_allowlist = ?,
-				sender_blocklist = ?, subject_keywords = ?, max_emails_per_run = ?, max_chars_per_email = ?, next_run_at = ?, updated_at = CURRENT_TIMESTAMP
+				sender_blocklist = ?, subject_keywords = ?, category_filter = ?, max_emails_per_run = ?, max_chars_per_email = ?, next_run_at = ?, updated_at = CURRENT_TIMESTAMP
 				WHERE monitor_id = ?`).bind(
 				input.name, input.enabled, input.includeRead, JSON.stringify(input.senderAllowlist),
-				JSON.stringify(input.senderBlocklist), JSON.stringify(input.subjectKeywords), input.maxEmailsPerRun,
+				JSON.stringify(input.senderBlocklist), JSON.stringify(input.subjectKeywords), JSON.stringify(input.categoryFilter), input.maxEmailsPerRun,
 				input.maxCharsPerEmail, nextRunAt, id
 			),
 			c.env.db.prepare('DELETE FROM ai_monitor_account WHERE monitor_id = ?').bind(id),

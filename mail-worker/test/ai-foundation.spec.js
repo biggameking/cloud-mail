@@ -6,10 +6,12 @@ import { normalizeEmailForAi } from '../src/ai/email-normalizer';
 import { validateDigestOutput } from '../src/ai/ai-output-validator';
 import WorkersAiProvider from '../src/ai/workers-ai-provider';
 import { dbInit } from '../src/init/init';
-import { assertAdminAiAccess, validateMonitorInput } from '../src/service/ai-monitor-service';
+import aiMonitorService, { assertAdminAiAccess, validateMonitorInput } from '../src/service/ai-monitor-service';
 import { filterEmail } from '../src/service/ai-digest-service';
 import aiDeliveryService, { escapeHtml, renderDigestEmail } from '../src/service/ai-delivery-service';
+import aiRetentionService from '../src/service/ai-retention-service';
 import { localDateKey, nextDailyRun } from '../src/ai/ai-schedule';
+import aiSafetyEmails from '../test-fixtures/ai-safety-emails';
 
 describe('AI monitoring foundation', () => {
 	it('is strictly disabled unless explicitly enabled', async () => {
@@ -92,6 +94,47 @@ describe('AI monitoring foundation', () => {
 		expect(statements.every(statement => /IF NOT EXISTS/i.test(statement))).toBe(true);
 	});
 
+	it('keeps phase-three migrations repeatable when columns already exist', async () => {
+		const statements = [];
+		const db = { prepare: vi.fn(statement => ({ run: async () => {
+			statements.push(statement);
+			if (/ALTER TABLE/i.test(statement)) throw new Error('duplicate column name');
+		} })) };
+		await dbInit.v3_4DB({ env: { db } });
+		await dbInit.v3_4DB({ env: { db } });
+		expect(statements.filter(statement => /CREATE TABLE IF NOT EXISTS ai_system_config/i.test(statement))).toHaveLength(2);
+		expect(statements.filter(statement => /ALTER TABLE/i.test(statement))).toHaveLength(8);
+	});
+
+	it('requires both environment and database switches before scheduling', async () => {
+		const ai = { run: vi.fn() };
+		const db = { prepare: vi.fn(() => ({ first: async () => ({ enabled: 0, delivery_enabled: 0 }) })) };
+		expect(await aiScheduler.run({ env: { db, ai, AI_MONITOR_ENABLED: 'true' }, cron: '*/30 * * * *' })).toEqual({ status: 'stopped' });
+		expect(ai.run).not.toHaveBeenCalled();
+	});
+
+	it('refuses to enable the database switch while the environment kill switch is off', async () => {
+		const context = {
+			env: { admin: 'admin@echoec.com', AI_MONITOR_ENABLED: 'false', db: { prepare: vi.fn() } },
+			get: () => ({ userId: 1, email: 'admin@echoec.com' })
+		};
+		await expect(aiMonitorService.updateSystemState(context, { enabled: true })).rejects.toMatchObject({ code: 409 });
+		expect(context.env.db.prepare).not.toHaveBeenCalled();
+	});
+
+	it('retention never selects permanently retained digests', async () => {
+		const statements = [];
+		const db = {
+			prepare: vi.fn(statement => {
+				statements.push(statement);
+				return { all: async () => ({ results: [] }) };
+			}),
+			batch: vi.fn().mockResolvedValue([])
+		};
+		expect(await aiRetentionService.cleanup({ env: { db, AI_MONITOR_ENABLED: 'true' } })).toEqual({ status: 'completed', deletedDigests: 0 });
+		expect(statements.some(statement => /WHERE retained = 0/i.test(statement))).toBe(true);
+	});
+
 	it('rejects ordinary users at the AI business boundary', () => {
 		const context = { env: { admin: 'admin@echoec.com' }, get: () => ({ userId: 2, email: 'user@echoec.com' }) };
 		expect(() => assertAdminAiAccess(context)).toThrow();
@@ -99,8 +142,9 @@ describe('AI monitoring foundation', () => {
 	});
 
 	it('accepts only explicit mailbox mappings and bounded monitor limits', () => {
-		const input = validateMonitorInput({name: ' Daily ', accountIds: [4, 4, 7], maxEmailsPerRun: 999, maxCharsPerEmail: 99999});
-		expect(input).toMatchObject({name: 'Daily', accountIds: [4, 7], maxEmailsPerRun: 200, maxCharsPerEmail: 20000});
+		const input = validateMonitorInput({name: ' Daily ', accountIds: [4, 4, 7], maxEmailsPerRun: 999, maxCharsPerEmail: 99999, categoryFilter: ['finance', 'finance']});
+		expect(input).toMatchObject({name: 'Daily', accountIds: [4, 7], maxEmailsPerRun: 200, maxCharsPerEmail: 20000, categoryFilter: ['finance']});
+		expect(() => validateMonitorInput({name: 'Bad category', accountIds: [4], categoryFilter: ['execute_mail_command']})).toThrow();
 		expect(() => validateMonitorInput({name: 'Empty', accountIds: []})).toThrow();
 	});
 
@@ -174,5 +218,13 @@ describe('AI monitoring foundation', () => {
 		}}, 3)).rejects.toThrow('delivery unavailable');
 		expect(send).toHaveBeenCalledOnce();
 		expect(statements.some(sql => /delivery_status = 'failed'/i.test(sql))).toBe(true);
+	});
+
+	it('keeps the fixed safety evaluation set bounded and free of active links or quoted history', () => {
+		const normalized = aiSafetyEmails.map((email, index) => normalizeEmailForAi({email_id: index + 1, ...email}, 6000));
+		expect(normalized.every(email => email.body.length <= 6000)).toBe(true);
+		expect(normalized.every(email => !/https?:\/\//i.test(email.body))).toBe(true);
+		expect(normalized.find(email => email.emailId === 3).body).not.toContain('old private conversation');
+		expect(normalized.find(email => email.emailId === 5).body).not.toContain('synthetic.test.value');
 	});
 });

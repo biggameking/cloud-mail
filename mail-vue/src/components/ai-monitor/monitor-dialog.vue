@@ -13,6 +13,18 @@
         <el-form-item :label="$t('aiMaxChars')"><el-input-number v-model="form.maxCharsPerEmail" :min="500" :max="20000" :step="500"/></el-form-item>
       </div>
       <el-form-item><el-switch v-model="form.includeRead" :active-text="$t('aiIncludeRead')"/></el-form-item>
+      <el-collapse>
+        <el-collapse-item name="filters" :title="$t('aiAdvancedFilters')">
+          <el-form-item :label="$t('aiSenderAllowlist')"><el-input-tag v-model="form.senderAllowlist" :placeholder="$t('aiFilterPlaceholder')"/></el-form-item>
+          <el-form-item :label="$t('aiSenderBlocklist')"><el-input-tag v-model="form.senderBlocklist" :placeholder="$t('aiFilterPlaceholder')"/></el-form-item>
+          <el-form-item :label="$t('aiSubjectKeywords')"><el-input-tag v-model="form.subjectKeywords" :placeholder="$t('aiKeywordPlaceholder')"/></el-form-item>
+		  <el-form-item :label="$t('aiCategoryFilter')">
+			<el-select v-model="form.categoryFilter" multiple clearable style="width: 100%">
+			  <el-option v-for="category in categories" :key="category" :value="category" :label="$t(`aiCategory_${category}`)"/>
+			</el-select>
+		  </el-form-item>
+        </el-collapse-item>
+      </el-collapse>
       <el-alert :title="$t('aiPrivacyNotice')" type="info" :closable="false" show-icon/>
     </el-form>
     <template #footer>
@@ -30,7 +42,8 @@ import {useI18n} from 'vue-i18n';
 const props = defineProps({modelValue: Boolean, monitor: Object, accounts: {type: Array, default: () => []}, loading: Boolean, initialAccountId: Number})
 const emit = defineEmits(['update:modelValue', 'save'])
 const {t} = useI18n()
-const form = reactive({monitorId: 0, name: '', enabled: false, accountIds: [], includeRead: true, maxEmailsPerRun: 50, maxCharsPerEmail: 6000})
+const categories = ['action_required', 'deadline', 'notification', 'finance', 'account_security', 'newsletter', 'other']
+const form = reactive({monitorId: 0, name: '', enabled: false, accountIds: [], includeRead: true, maxEmailsPerRun: 50, maxCharsPerEmail: 6000, senderAllowlist: [], senderBlocklist: [], subjectKeywords: [], categoryFilter: []})
 
 watch(() => [props.modelValue, props.monitor, props.initialAccountId], () => {
   if (!props.modelValue) return
@@ -41,7 +54,11 @@ watch(() => [props.modelValue, props.monitor, props.initialAccountId], () => {
     accountIds: props.monitor?.accountIds ? [...props.monitor.accountIds] : (props.initialAccountId ? [props.initialAccountId] : []),
     includeRead: props.monitor?.includeRead !== false,
     maxEmailsPerRun: props.monitor?.maxEmailsPerRun || 50,
-    maxCharsPerEmail: props.monitor?.maxCharsPerEmail || 6000
+    maxCharsPerEmail: props.monitor?.maxCharsPerEmail || 6000,
+    senderAllowlist: [...(props.monitor?.senderAllowlist || [])],
+    senderBlocklist: [...(props.monitor?.senderBlocklist || [])],
+    subjectKeywords: [...(props.monitor?.subjectKeywords || [])],
+    categoryFilter: [...(props.monitor?.categoryFilter || [])]
   })
 }, {immediate: true})
 
@@ -57,4 +74,6 @@ function submit() {
 <style scoped>
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 @media (max-width: 600px) { .form-grid { grid-template-columns: 1fr; } }
+:deep(.el-collapse) { margin-bottom: 14px; border: 0; }
+:deep(.el-dialog) { max-width: calc(100vw - 28px); }
 </style>

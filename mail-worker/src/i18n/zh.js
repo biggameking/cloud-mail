@@ -70,6 +70,7 @@ const zh = {
 	aiNoEligibleEmails: '没有符合条件的邮件可供预览',
 	aiBudgetExceeded: '已达到 AI 当日预算上限',
 	aiPreviewUnavailable: '当前无法生成预览，请稍后重试',
+	aiEnvironmentDisabled: '部署级 AI 开关仍处于关闭状态',
 	aiDigestEmailDisclaimer: '此摘要由 AI 生成，重要信息请在 Cloud Mail 管理台中核对原始邮件。',
 	aiPriority_high: '高优先级',
 	aiPriority_medium: '中优先级',

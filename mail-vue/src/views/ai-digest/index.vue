@@ -11,6 +11,21 @@
 
     <BudgetStatus :usage="usage" :loading="loadingUsage"/>
 
+    <section class="system-card">
+      <div>
+        <span class="eyebrow">{{ $t('aiEmergencyControls') }}</span>
+        <h2>{{ $t('aiSystemControl') }}</h2>
+        <p>{{ $t('aiSystemControlDesc') }}</p>
+      </div>
+      <div class="system-switches" v-loading="savingSystem">
+        <el-switch v-model="system.enabled" :disabled="!system.environmentEnabled" :active-text="$t('aiMasterSwitch')" @change="updateSystem"/>
+        <el-switch v-model="system.deliveryEnabled" :disabled="!system.enabled" :active-text="$t('aiDeliverySwitch')" @change="updateSystem"/>
+      </div>
+    </section>
+    <div class="alerts" v-if="alerts.length">
+      <el-alert v-for="alert in alerts" :key="alert" :title="$t(alert)" type="warning" :closable="false" show-icon/>
+    </div>
+
     <section class="section-block">
       <div class="section-heading"><div><h2>{{ $t('aiMonitoringRules') }}</h2><p>{{ $t('aiMonitoringRulesDesc') }}</p></div></div>
       <el-empty v-if="!loading && !monitors.length" :description="$t('aiNoMonitors')"/>
@@ -25,12 +40,26 @@
             <span><Icon icon="solar:shield-check-linear"/>{{ $t('aiAttachmentsExcluded') }}</span>
           </div>
           <div class="monitor-actions">
-            <el-button :loading="previewingId === monitor.monitorId" :disabled="!usage?.enabled" type="primary" plain @click="preview(monitor)">{{ $t('aiSafePreview') }}</el-button>
+			<el-button :loading="previewingId === monitor.monitorId" :disabled="!system.enabled" type="primary" plain @click="preview(monitor)">{{ $t('aiSafePreview') }}</el-button>
             <el-button @click="openEdit(monitor)">{{ $t('settings') }}</el-button>
             <el-button type="danger" text @click="removeMonitor(monitor)">{{ $t('delete') }}</el-button>
           </div>
         </article>
       </div>
+    </section>
+
+    <section class="section-block">
+      <div class="section-heading"><div><h2>{{ $t('aiRunHistory') }}</h2><p>{{ $t('aiRunHistoryDesc') }}</p></div></div>
+      <el-table :data="runs" size="small" empty-text="—" class="run-table">
+        <el-table-column prop="monitorName" :label="$t('aiMonitorName')" min-width="150"/>
+        <el-table-column :label="$t('tabStatus')" width="120"><template #default="scope"><el-tag size="small" :type="runStatusType(scope.row.status)">{{ $t(`aiRun_${scope.row.status}`) }}</el-tag></template></el-table-column>
+        <el-table-column prop="emailCount" :label="$t('aiEmailsProcessed')" width="100"/>
+        <el-table-column prop="backlogCount" :label="$t('aiBacklog')" width="90"/>
+        <el-table-column prop="estimatedInputTokens" :label="$t('aiInputTokens')" width="130"/>
+		<el-table-column prop="promptVersion" :label="$t('aiPromptVersion')" width="130"/>
+        <el-table-column prop="durationMs" :label="$t('aiDuration')" width="110"><template #default="scope">{{ scope.row.durationMs == null ? '—' : `${scope.row.durationMs} ms` }}</template></el-table-column>
+        <el-table-column :label="$t('date')" min-width="170"><template #default="scope">{{ formatTime(scope.row.startedAt) }}</template></el-table-column>
+      </el-table>
     </section>
 
     <section class="section-block">
@@ -51,6 +80,11 @@
 
     <el-drawer v-model="detailOpen" :title="activeDigest?.title" size="min(720px, 100%)">
       <div v-if="activeDigest" class="digest-detail">
+        <div class="detail-actions">
+          <el-button size="small" @click="toggleRetained">{{ $t(activeDigest.retained ? 'aiUnpinDigest' : 'aiRetainDigest') }}</el-button>
+          <el-button size="small" type="danger" plain @click="deleteDigest">{{ $t('delete') }}</el-button>
+        </div>
+        <el-alert v-if="activeDigest.backlogCount" :title="$t('aiPartialDigest', {count: activeDigest.backlogCount})" type="warning" :closable="false" show-icon/>
         <p class="overview">{{ activeDigest.overview }}</p>
         <article v-for="item in activeDigest.items" :key="item.emailId" class="source-card">
           <div class="source-head"><el-tag :type="priorityType(item.priority)">{{ $t(`aiPriority_${item.priority}`) }}</el-tag><span>{{ $t(`aiCategory_${item.category}`) }}</span></div>
@@ -74,8 +108,8 @@ import {ElMessage, ElMessageBox} from 'element-plus';
 import {Icon} from '@iconify/vue';
 import BudgetStatus from '@/components/ai-monitor/budget-status.vue';
 import MonitorDialog from '@/components/ai-monitor/monitor-dialog.vue';
-import {aiMonitorAccounts, aiMonitorCreate, aiMonitorDelete, aiMonitorList, aiMonitorUpdate} from '@/request/ai-monitor';
-import {aiDigestDetail, aiDigestList, aiDigestPreview, aiDigestSource, aiUsageToday} from '@/request/ai-digest';
+import {aiMonitorAccounts, aiMonitorCreate, aiMonitorDelete, aiMonitorList, aiMonitorUpdate, aiSystemState, aiSystemUpdate} from '@/request/ai-monitor';
+import {aiDigestDelete, aiDigestDetail, aiDigestList, aiDigestPreview, aiDigestSetRetained, aiDigestSource, aiRunList, aiUsageToday} from '@/request/ai-digest';
 import {useEmailStore} from '@/store/email';
 
 defineOptions({name: 'ai-digest'})
@@ -87,18 +121,33 @@ const monitors = ref([])
 const accounts = ref([])
 const digests = ref([])
 const usage = ref(null)
+const system = ref({environmentEnabled: false, enabled: false, deliveryEnabled: false})
+const runs = ref([])
 const loading = ref(true)
 const loadingUsage = ref(true)
 const dialogOpen = ref(false)
 const editingMonitor = ref(null)
 const saving = ref(false)
+const savingSystem = ref(false)
 const previewingId = ref(0)
 const activeDigest = ref(null)
 const detailOpen = ref(false)
 const initialAccountId = computed(() => Number(route.query.accountId) || 0)
+const alerts = computed(() => {
+  const values = []
+  if (!system.value.environmentEnabled) values.push('aiAlertEnvironmentOff')
+  if ((usage.value?.estimatedNeurons || 0) >= (usage.value?.limits?.maxDailyEstimatedNeurons || 1) * .7) values.push('aiAlertBudget70')
+  else if ((usage.value?.estimatedNeurons || 0) >= (usage.value?.limits?.maxDailyEstimatedNeurons || 1) * .5) values.push('aiAlertBudget50')
+  if (runs.value.slice(0, 2).length === 2 && runs.value.slice(0, 2).every(run => run.status === 'failed')) values.push('aiAlertConsecutiveFailures')
+	const lastSuccess = runs.value.find(run => ['succeeded', 'partial'].includes(run.status))
+	if (system.value.enabled && runs.value.length && (!lastSuccess || Date.now() - new Date(`${lastSuccess.finishedAt?.replace(' ', 'T')}Z`).getTime() > 86400000)) values.push('aiAlertNoRecentSuccess')
+  if (runs.value.some(run => run.backlogCount > 100)) values.push('aiAlertBacklog')
+  if (digests.value.some(digest => digest.deliveryStatus === 'failed' && digest.deliveryAttempts >= 3)) values.push('aiAlertDeliveryFailed')
+  return values
+})
 
 onMounted(async () => {
-  await Promise.all([loadMonitors(), loadDigests(), loadUsage()])
+  await Promise.all([loadMonitors(), loadDigests(), loadUsage(), loadSystem(), loadRuns()])
   if (initialAccountId.value) openCreate()
 })
 
@@ -109,12 +158,26 @@ async function loadMonitors() {
 }
 async function loadDigests() { digests.value = await aiDigestList() }
 async function loadUsage() { loadingUsage.value = true; try { usage.value = await aiUsageToday() } finally { loadingUsage.value = false } }
+async function loadSystem() { system.value = await aiSystemState() }
+async function loadRuns() { runs.value = await aiRunList() }
 function openCreate() { editingMonitor.value = null; dialogOpen.value = true }
 function openEdit(monitor) { editingMonitor.value = monitor; dialogOpen.value = true }
 function accountLabel(ids) { return ids.map(id => accounts.value.find(account => account.accountId === id)?.email).filter(Boolean).join(' · ') }
 function formatTime(value) { return value ? new Intl.DateTimeFormat(undefined, {dateStyle: 'medium', timeStyle: 'short'}).format(new Date(`${value.replace(' ', 'T')}Z`)) : '' }
 function priorityType(priority) { return priority === 'high' ? 'danger' : priority === 'medium' ? 'warning' : 'info' }
 function deliveryType(status) { return status === 'sent' ? 'success' : status === 'failed' ? 'danger' : 'info' }
+function runStatusType(status) { return ['succeeded', 'partial'].includes(status) ? 'success' : status === 'failed' ? 'danger' : status === 'skipped' ? 'warning' : 'info' }
+
+async function updateSystem() {
+  savingSystem.value = true
+  try {
+    system.value = await aiSystemUpdate({enabled: system.value.enabled, deliveryEnabled: system.value.deliveryEnabled})
+    ElMessage({message: t('saveSuccessMsg'), type: 'success', plain: true})
+  } catch (error) {
+    await loadSystem()
+    throw error
+  } finally { savingSystem.value = false }
+}
 
 async function saveMonitor(form) {
   saving.value = true
@@ -136,13 +199,26 @@ async function preview(monitor) {
   previewingId.value = monitor.monitorId
   try {
     const digest = await aiDigestPreview(monitor.monitorId)
-    await Promise.all([loadDigests(), loadUsage()])
+    await Promise.all([loadDigests(), loadUsage(), loadRuns()])
     activeDigest.value = digest
     detailOpen.value = true
     ElMessage({message: t('aiPreviewReady'), type: 'success', plain: true})
   } finally { previewingId.value = 0 }
 }
 async function openDigest(digestId) { activeDigest.value = await aiDigestDetail(digestId); detailOpen.value = true }
+async function toggleRetained() {
+  const retained = !activeDigest.value.retained
+  await aiDigestSetRetained(activeDigest.value.digestId, retained)
+  activeDigest.value.retained = retained
+  await loadDigests()
+}
+async function deleteDigest() {
+  await ElMessageBox.confirm(t('aiDeleteDigestConfirm'), {confirmButtonText: t('confirm'), cancelButtonText: t('cancel'), type: 'warning'})
+  await aiDigestDelete(activeDigest.value.digestId)
+  detailOpen.value = false
+  activeDigest.value = null
+  await loadDigests()
+}
 async function openSource(emailId) {
   const email = await aiDigestSource(activeDigest.value.digestId, emailId)
   emailStore.contentData = {email, delType: 'logic', showStar: false, showReply: false, showUnread: false, readOnly: true}
@@ -159,6 +235,11 @@ async function openSource(emailId) {
 .page-header p, .section-heading p { margin: 0; color: var(--secondary-text-color); }
 .eyebrow { color: var(--el-color-primary); font-size: 12px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; }
 .budget-card, .section-block { max-width: 1180px; margin: 0 auto; }
+.system-card { max-width: 1180px; margin: 14px auto 0; padding: 18px 20px; border: 1px solid var(--el-border-color-lighter); border-radius: 12px; background: var(--el-bg-color); display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.system-card h2 { margin: 4px 0 6px; font-size: 18px; }
+.system-card p { margin: 0; color: var(--secondary-text-color); }
+.system-switches { display: grid; justify-items: end; gap: 8px; min-width: 190px; }
+.alerts { max-width: 1180px; margin: 12px auto 0; display: grid; gap: 8px; }
 .section-block { margin-top: 28px; }
 .section-heading { margin-bottom: 14px; }
 .section-heading h2 { margin: 0 0 5px; font-size: 20px; }
@@ -180,10 +261,12 @@ async function openSource(emailId) {
 .digest-copy span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .digest-stats { display: flex; align-items: center; gap: 10px; }
 .overview { padding: 16px; border-radius: 10px; background: var(--el-fill-color-light); line-height: 1.7; }
+.detail-actions { display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 12px; }
+.run-table { border-radius: 12px; }
 .source-card { padding: 18px 0; border-bottom: 1px solid var(--el-border-color-lighter); }
 .source-head { display: flex; align-items: center; gap: 8px; color: var(--secondary-text-color); font-size: 12px; }
 .source-card h3 { margin: 10px 0 8px; }
 .source-card p, .source-card li { line-height: 1.65; }
 .source-link { border: 0; padding: 0; display: inline-flex; align-items: center; gap: 5px; color: var(--el-color-primary); background: transparent; cursor: pointer; }
-@media (max-width: 767px) { .ai-page { padding: 18px 14px; } .page-header { display: block; } .page-header .el-button { margin-top: 14px; } .digest-row { grid-template-columns: 38px minmax(0, 1fr); } .digest-stats { display: none; } }
+@media (max-width: 767px) { .ai-page { padding: 18px 14px; } .page-header { display: block; } .page-header .el-button { margin-top: 14px; } .system-card { display: block; } .system-switches { justify-items: start; margin-top: 14px; } .digest-row { grid-template-columns: 38px minmax(0, 1fr); } .digest-stats { display: none; } .run-table { overflow-x: auto; } }
 </style>

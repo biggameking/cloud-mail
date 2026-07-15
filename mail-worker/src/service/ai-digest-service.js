@@ -55,18 +55,48 @@ const aiDigestService = {
 		assertAdminAiAccess(c);
 		const { results } = await c.env.db.prepare(`SELECT d.digest_id AS digestId, d.monitor_id AS monitorId,
 			d.title, d.overview, d.important_count AS importantCount, d.action_count AS actionCount,
-			d.delivery_status AS deliveryStatus, d.created_at AS createdAt, m.name AS monitorName
-			FROM ai_digest d JOIN ai_monitor m ON m.monitor_id = d.monitor_id
+			d.delivery_status AS deliveryStatus, d.delivery_attempts AS deliveryAttempts, d.retained, d.created_at AS createdAt, m.name AS monitorName,
+			r.status AS runStatus
+			FROM ai_digest d JOIN ai_monitor m ON m.monitor_id = d.monitor_id JOIN ai_digest_run r ON r.run_id = d.run_id
 			ORDER BY d.digest_id DESC LIMIT 100`).all();
 		return results;
+	},
+
+	async runs(c) {
+		assertAdminAiAccess(c);
+		const { results } = await c.env.db.prepare(`SELECT r.run_id AS runId, r.monitor_id AS monitorId, m.name AS monitorName,
+			r.status, r.reason_code AS reasonCode, r.email_count AS emailCount, r.filtered_count AS filteredCount,
+			r.backlog_count AS backlogCount, r.estimated_input_tokens AS estimatedInputTokens, r.input_tokens AS inputTokens,
+			r.output_tokens AS outputTokens, r.duration_ms AS durationMs, r.model, r.prompt_version AS promptVersion, r.started_at AS startedAt,
+			r.finished_at AS finishedAt, r.error_class AS errorClass
+			FROM ai_digest_run r JOIN ai_monitor m ON m.monitor_id = r.monitor_id ORDER BY r.run_id DESC LIMIT 100`).all();
+		return results;
+	},
+
+	async remove(c, digestId) {
+		assertAdminAiAccess(c);
+		const id = Number(digestId);
+		if (!Number.isInteger(id) || id <= 0) throw new BizError(t('aiInvalidDigest'), 400);
+		await c.env.db.batch([
+			c.env.db.prepare('DELETE FROM ai_digest_source WHERE digest_id = ?').bind(id),
+			c.env.db.prepare('DELETE FROM ai_digest WHERE digest_id = ?').bind(id)
+		]);
+	},
+
+	async setRetained(c, digestId, retained) {
+		assertAdminAiAccess(c);
+		const id = Number(digestId);
+		if (!Number.isInteger(id) || id <= 0) throw new BizError(t('aiInvalidDigest'), 400);
+		await c.env.db.prepare('UPDATE ai_digest SET retained = ? WHERE digest_id = ?').bind(retained === true ? 1 : 0, id).run();
 	},
 
 	async detail(c, digestId) {
 		assertAdminAiAccess(c);
 		const id = Number(digestId);
 		if (!Number.isInteger(id) || id <= 0) throw new BizError(t('aiInvalidDigest'), 400);
-		const digest = await c.env.db.prepare(`SELECT d.*, m.name AS monitor_name FROM ai_digest d
-			JOIN ai_monitor m ON m.monitor_id = d.monitor_id WHERE d.digest_id = ?`).bind(id).first();
+		const digest = await c.env.db.prepare(`SELECT d.*, m.name AS monitor_name, r.status AS run_status, r.backlog_count
+			FROM ai_digest d JOIN ai_monitor m ON m.monitor_id = d.monitor_id
+			JOIN ai_digest_run r ON r.run_id = d.run_id WHERE d.digest_id = ?`).bind(id).first();
 		if (!digest) throw new BizError(t('aiDigestNotFound'), 404);
 		const { results: sources } = await c.env.db.prepare(`SELECT s.email_id AS emailId, s.priority, s.category,
 			s.summary, s.action_json AS actionJson, e.subject, e.send_email AS sendEmail, e.to_email AS toEmail,
@@ -82,6 +112,9 @@ const aiDigestService = {
 			items: sources.map(source => ({ ...source, actions: JSON.parse(source.actionJson || '[]'), actionJson: undefined })),
 			importantCount: digest.important_count,
 			actionCount: digest.action_count,
+			runStatus: digest.run_status,
+			backlogCount: digest.backlog_count,
+			retained: digest.retained === 1,
 			createdAt: digest.created_at
 		};
 	},
@@ -130,6 +163,8 @@ const aiDigestService = {
 		assertAdminAiAccess(c);
 		const config = getAiConfig(c.env);
 		if (!config.enabled) throw new BizError(t('aiMonitoringDisabled'), 409);
+		const system = await aiMonitorService.systemState(c, false);
+		if (!system.enabled) throw new BizError(t('aiMonitoringDisabled'), 409);
 		const monitor = await aiMonitorService.get(c, body.monitorId);
 		const generated = await this.generate(c, monitor, {
 			periodStart: `manual:${crypto.randomUUID()}`,
@@ -140,13 +175,14 @@ const aiDigestService = {
 		});
 		if (generated.status === 'empty') throw new BizError(t('aiNoEligibleEmails'), 400);
 		if (generated.status === 'budget_skipped') throw new BizError(`${t('aiBudgetExceeded')}: ${generated.reasonCode}`, 429);
-		if (generated.status !== 'succeeded') throw new BizError(t('aiPreviewUnavailable'), 409);
+		if (!['succeeded', 'partial'].includes(generated.status)) throw new BizError(t('aiPreviewUnavailable'), 409);
 		return this.detail(c, generated.digestId);
 	},
 
 	async generate(c, monitor, options) {
 		const config = getAiConfig(c.env);
 		if (!config.enabled) return { status: 'disabled' };
+		const startedAt = Date.now();
 		let run;
 		try {
 			run = await c.env.db.prepare(`INSERT INTO ai_digest_run (
@@ -165,23 +201,28 @@ const aiDigestService = {
 			AND a.is_del = 0 AND a.status = 0 AND u.is_del = 0 AND u.status = 0
 			AND e.email_id > ? AND (? = -1 OR e.unread = ?) ORDER BY e.email_id ASC LIMIT ?`;
 		const cursor = options.useCursor ? monitor.lastProcessedEmailId : 0;
+		const scanLimit = Math.min(Math.max(monitor.maxEmailsPerRun * 5, 250), 1000);
 		const bindingParams = monitor.includeRead
-			? [...monitor.accountIds, cursor, -1, -1, monitor.maxEmailsPerRun]
-			: [...monitor.accountIds, cursor, 0, 0, monitor.maxEmailsPerRun];
+			? [...monitor.accountIds, cursor, -1, -1, scanLimit]
+			: [...monitor.accountIds, cursor, 0, 0, scanLimit];
 		const { results: candidates } = await c.env.db.prepare(query).bind(...bindingParams).all();
-		const selected = candidates.filter(email => filterEmail(email, monitor));
+		const selectedCandidates = candidates.filter(email => filterEmail(email, monitor));
+		const backlogCount = Math.max(0, selectedCandidates.length - monitor.maxEmailsPerRun, candidates.length === scanLimit ? 1 : 0);
+		const selected = selectedCandidates.slice(0, monitor.maxEmailsPerRun);
 		if (!selected.length) {
-			await c.env.db.prepare(`UPDATE ai_digest_run SET status = 'skipped', reason_code = 'no_eligible_email',
-				email_count = 0, filtered_count = ?, finished_at = CURRENT_TIMESTAMP WHERE run_id = ?`)
-				.bind(candidates.length, runId).run();
+			const statements = [c.env.db.prepare(`UPDATE ai_digest_run SET status = 'skipped', reason_code = 'no_eligible_email',
+				email_count = 0, filtered_count = ?, finished_at = CURRENT_TIMESTAMP WHERE run_id = ?`).bind(candidates.length, runId)];
+			if (options.advanceCursor && candidates.length) statements.push(c.env.db.prepare(`UPDATE ai_monitor SET last_processed_email_id = ?, updated_at = CURRENT_TIMESTAMP
+				WHERE monitor_id = ?`).bind(candidates[candidates.length - 1].email_id, monitor.monitorId));
+			await c.env.db.batch(statements);
 			return { status: 'empty', runId };
 		}
 		const emails = selected.map(email => normalizeEmailForAi(email, monitor.maxCharsPerEmail));
 		const userPrompt = buildDigestPrompt({ emails, language: monitor.language });
 		const estimatedInputTokens = estimateTokens(DIGEST_SYSTEM_PROMPT.length + userPrompt.length);
-		await c.env.db.prepare(`UPDATE ai_digest_run SET status = 'running', email_count = ?, filtered_count = ?,
+		await c.env.db.prepare(`UPDATE ai_digest_run SET status = 'running', email_count = ?, filtered_count = ?, backlog_count = ?,
 			input_chars = ?, estimated_input_tokens = ? WHERE run_id = ?`)
-			.bind(selected.length, candidates.length - selected.length, userPrompt.length, estimatedInputTokens, runId).run();
+			.bind(selected.length, candidates.length - selectedCandidates.length, backlogCount, userPrompt.length, estimatedInputTokens, runId).run();
 		const usage = await this.readUsage(c);
 		const budget = checkAiBudget({
 			current: usage,
@@ -215,6 +256,7 @@ const aiDigestService = {
 			const inputTokens = Number(raw?.usage?.prompt_tokens) || estimatedInputTokens;
 			const outputTokens = Number(raw?.usage?.completion_tokens) || estimateTokens(rawContent.length);
 			const digest = validateDigestOutput(raw, emails.map(email => email.emailId));
+			if (monitor.categoryFilter?.length) digest.items = digest.items.filter(item => monitor.categoryFilter.includes(item.category));
 			const importantCount = digest.items.filter(item => item.priority === 'high').length;
 			const actionCount = digest.items.reduce((total, item) => total + item.actions.length, 0);
 			const expiresAt = new Date(Date.now() + 30 * 86400000).toISOString();
@@ -229,15 +271,15 @@ const aiDigestService = {
 				...digest.items.map(item => c.env.db.prepare(`INSERT INTO ai_digest_source (
 					digest_id, email_id, priority, category, summary, action_json
 				) VALUES (?, ?, ?, ?, ?, ?)`).bind(digestId, item.emailId, item.priority, item.category, item.summary, JSON.stringify(item.actions))),
-				c.env.db.prepare(`UPDATE ai_digest_run SET status = 'succeeded', input_tokens = ?, output_tokens = ?, finished_at = CURRENT_TIMESTAMP
-					WHERE run_id = ?`).bind(inputTokens, outputTokens, runId),
+				c.env.db.prepare(`UPDATE ai_digest_run SET status = ?, input_tokens = ?, output_tokens = ?, duration_ms = ?, finished_at = CURRENT_TIMESTAMP
+					WHERE run_id = ?`).bind(backlogCount ? 'partial' : 'succeeded', inputTokens, outputTokens, Date.now() - startedAt, runId),
 				...(options.advanceCursor ? [c.env.db.prepare(`UPDATE ai_monitor SET last_processed_email_id = ?, updated_at = CURRENT_TIMESTAMP
 					WHERE monitor_id = ?`).bind(lastEmailId, monitor.monitorId)] : [])
 			]);
-			return { status: 'succeeded', digestId, runId, lastEmailId };
+			return { status: backlogCount ? 'partial' : 'succeeded', digestId, runId, lastEmailId, backlogCount };
 		} catch (error) {
-			await c.env.db.prepare(`UPDATE ai_digest_run SET status = 'failed', error_class = ?, finished_at = CURRENT_TIMESTAMP WHERE run_id = ?`)
-				.bind(safeErrorClass(error), runId).run();
+			await c.env.db.prepare(`UPDATE ai_digest_run SET status = 'failed', error_class = ?, duration_ms = ?, finished_at = CURRENT_TIMESTAMP WHERE run_id = ?`)
+				.bind(safeErrorClass(error), Date.now() - startedAt, runId).run();
 			throw error;
 		}
 	}

@@ -25,6 +25,7 @@ const dbInit = {
 		await this.v3_1DB(c);
 		await this.v3_2DB(c);
 		await this.v3_3DB(c);
+		await this.v3_4DB(c);
 		await c.env.db.prepare(`UPDATE setting SET
 			secret_key = NULL,
 			site_key = NULL,
@@ -34,6 +35,25 @@ const dbInit = {
 			s3_secret_key = ''`).run();
 		await settingService.refresh(c);
 		return c.text('success');
+	},
+
+	async v3_4DB(c) {
+		await c.env.db.prepare(`CREATE TABLE IF NOT EXISTS ai_system_config (
+			config_id INTEGER PRIMARY KEY CHECK (config_id = 1),
+			enabled INTEGER NOT NULL DEFAULT 0,
+			delivery_enabled INTEGER NOT NULL DEFAULT 0,
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`).run();
+		await c.env.db.prepare(`INSERT OR IGNORE INTO ai_system_config (config_id, enabled, delivery_enabled) VALUES (1, 0, 0)`).run();
+		for (const statement of [
+			`ALTER TABLE ai_digest_run ADD COLUMN backlog_count INTEGER NOT NULL DEFAULT 0`,
+			`ALTER TABLE ai_digest_run ADD COLUMN duration_ms INTEGER`,
+			`ALTER TABLE ai_digest ADD COLUMN retained INTEGER NOT NULL DEFAULT 0`,
+			`ALTER TABLE ai_monitor ADD COLUMN category_filter TEXT NOT NULL DEFAULT '[]'`
+		]) {
+			try { await c.env.db.prepare(statement).run(); }
+			catch (error) { if (!error.message?.includes('duplicate column')) throw error; }
+		}
 	},
 
 	async v3_3DB(c) {

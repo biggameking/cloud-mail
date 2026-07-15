@@ -1,5 +1,5 @@
 import { getAiConfig } from '../ai/ai-config';
-import { parseMonitorRow } from './ai-monitor-service';
+import aiMonitorService, { parseMonitorRow } from './ai-monitor-service';
 import aiDigestService from './ai-digest-service';
 import aiDeliveryService from './ai-delivery-service';
 import { localDateKey, nextDailyRun } from '../ai/ai-schedule';
@@ -20,6 +20,8 @@ const aiSchedulerService = {
 
 	async run(c, now = new Date()) {
 		if (!getAiConfig(c.env).enabled) return { status: 'disabled' };
+		const system = await aiMonitorService.systemState(c, false);
+		if (!system.enabled) return { status: 'stopped' };
 		const deliveries = await aiDeliveryService.retryPending(c);
 		const monitors = await this.dueMonitors(c, now);
 		const outcomes = [];
@@ -32,11 +34,11 @@ const aiSchedulerService = {
 					periodEnd: `${dateKey}:${monitor.scheduleTime}`,
 					useCursor: true,
 					advanceCursor: true,
-					deliveryRequested: true
+					deliveryRequested: system.deliveryEnabled
 				});
 				await c.env.db.prepare('UPDATE ai_monitor SET next_run_at = ?, updated_at = CURRENT_TIMESTAMP WHERE monitor_id = ?')
 					.bind(nextRunAt, monitor.monitorId).run();
-				if (outcome.status === 'succeeded') await aiDeliveryService.deliver(c, outcome.digestId);
+				if (['succeeded', 'partial'].includes(outcome.status)) await aiDeliveryService.deliver(c, outcome.digestId);
 				outcomes.push({ monitorId: monitor.monitorId, status: outcome.status });
 			} catch (error) {
 				await c.env.db.prepare('UPDATE ai_monitor SET next_run_at = ?, updated_at = CURRENT_TIMESTAMP WHERE monitor_id = ?')
