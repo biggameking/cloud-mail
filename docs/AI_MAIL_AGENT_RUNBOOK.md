@@ -11,7 +11,7 @@ Workers AI 通过 Wrangler 的 `ai` binding 使用，不需要也不允许配置
 1. 保持 `AI_MONITOR_ENABLED = "false"`。
 2. 运行 `pnpm exec vitest run`。
 3. 运行 `pnpm exec wrangler deploy --dry-run`，确认输出包含 `env.ai (AI)`。
-4. 部署 Worker；通过现有初始化接口以管理员身份执行幂等迁移。
+4. 部署 Worker；执行 `pnpm exec wrangler d1 migrations apply cloudmail-echoec-db --remote`。AI 专用迁移不得调用会修改现有设置的全量初始化接口。
 5. 复验收信、查看、转发和发信路径。
 
 新增表均使用 `CREATE TABLE/INDEX IF NOT EXISTS`，旧 Worker 不引用这些表；回滚 Worker 不需要删除数据表。

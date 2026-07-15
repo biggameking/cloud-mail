@@ -72,6 +72,7 @@ const dbInit = {
 				sender_allowlist TEXT NOT NULL DEFAULT '[]',
 				sender_blocklist TEXT NOT NULL DEFAULT '[]',
 				subject_keywords TEXT NOT NULL DEFAULT '[]',
+				category_filter TEXT NOT NULL DEFAULT '[]',
 				max_emails_per_run INTEGER NOT NULL DEFAULT 100,
 				max_chars_per_email INTEGER NOT NULL DEFAULT 8000,
 				last_processed_email_id INTEGER NOT NULL DEFAULT 0,
@@ -97,6 +98,7 @@ const dbInit = {
 				reason_code TEXT NOT NULL DEFAULT '',
 				email_count INTEGER NOT NULL DEFAULT 0,
 				filtered_count INTEGER NOT NULL DEFAULT 0,
+				backlog_count INTEGER NOT NULL DEFAULT 0,
 				input_chars INTEGER NOT NULL DEFAULT 0,
 				estimated_input_tokens INTEGER NOT NULL DEFAULT 0,
 				input_tokens INTEGER,
@@ -105,6 +107,7 @@ const dbInit = {
 				prompt_version TEXT NOT NULL DEFAULT '',
 				started_at TEXT,
 				finished_at TEXT,
+				duration_ms INTEGER,
 				error_class TEXT NOT NULL DEFAULT '',
 				UNIQUE(monitor_id, period_start, period_end)
 			)`,
@@ -122,7 +125,8 @@ const dbInit = {
 				delivery_attempts INTEGER NOT NULL DEFAULT 0,
 				delivered_at TEXT,
 				created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-				expires_at TEXT
+				expires_at TEXT,
+				retained INTEGER NOT NULL DEFAULT 0
 			)`,
 			`CREATE INDEX IF NOT EXISTS idx_ai_digest_monitor ON ai_digest(monitor_id, digest_id DESC)`,
 			`CREATE TABLE IF NOT EXISTS ai_digest_source (
