@@ -9,6 +9,8 @@ import { dbInit } from '../src/init/init';
 import aiMonitorService, { assertAdminAiAccess, validateMonitorInput } from '../src/service/ai-monitor-service';
 import { filterEmail } from '../src/service/ai-digest-service';
 import aiDeliveryService, { escapeHtml, renderDigestEmail } from '../src/service/ai-delivery-service';
+import aiDigestService from '../src/service/ai-digest-service';
+import aiSchedulerService from '../src/service/ai-scheduler-service';
 import aiRetentionService from '../src/service/ai-retention-service';
 import { localDateKey, nextDailyRun } from '../src/ai/ai-schedule';
 import aiSafetyEmails from '../test-fixtures/ai-safety-emails';
@@ -111,6 +113,36 @@ describe('AI monitoring foundation', () => {
 		const db = { prepare: vi.fn(() => ({ first: async () => ({ enabled: 0, delivery_enabled: 0 }) })) };
 		expect(await aiScheduler.run({ env: { db, ai, AI_MONITOR_ENABLED: 'true' }, cron: '*/30 * * * *' })).toEqual({ status: 'stopped' });
 		expect(ai.run).not.toHaveBeenCalled();
+	});
+
+	it('never retries or sends digest email while the delivery switch is off', async () => {
+		const context = {
+			env: {
+				AI_MONITOR_ENABLED: 'true',
+				db: { prepare: vi.fn(() => ({ bind() { return this; }, run: async () => ({ meta: { changes: 1 } }) })) }
+			}
+		};
+		const systemState = vi.spyOn(aiMonitorService, 'systemState').mockResolvedValue({ enabled: true, deliveryEnabled: false });
+		const dueMonitors = vi.spyOn(aiSchedulerService, 'dueMonitors').mockResolvedValue([{
+			monitorId: 7,
+			timezone: 'Asia/Shanghai',
+			scheduleTime: '08:00'
+		}]);
+		const generate = vi.spyOn(aiDigestService, 'generate').mockResolvedValue({ status: 'succeeded', digestId: 9 });
+		const retryPending = vi.spyOn(aiDeliveryService, 'retryPending').mockResolvedValue([{ status: 'sent' }]);
+		const deliver = vi.spyOn(aiDeliveryService, 'deliver').mockResolvedValue({ status: 'sent' });
+
+		const result = await aiSchedulerService.run(context, new Date('2026-07-15T00:30:00.000Z'));
+
+		expect(result).toMatchObject({ status: 'completed', deliveries: [] });
+		expect(generate).toHaveBeenCalledWith(context, expect.any(Object), expect.objectContaining({ deliveryRequested: false }));
+		expect(retryPending).not.toHaveBeenCalled();
+		expect(deliver).not.toHaveBeenCalled();
+		systemState.mockRestore();
+		dueMonitors.mockRestore();
+		generate.mockRestore();
+		retryPending.mockRestore();
+		deliver.mockRestore();
 	});
 
 	it('refuses to enable the database switch while the environment kill switch is off', async () => {

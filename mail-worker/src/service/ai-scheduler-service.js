@@ -22,7 +22,9 @@ const aiSchedulerService = {
 		if (!getAiConfig(c.env).enabled) return { status: 'disabled' };
 		const system = await aiMonitorService.systemState(c, false);
 		if (!system.enabled) return { status: 'stopped' };
-		const deliveries = await aiDeliveryService.retryPending(c);
+		const deliveries = system.deliveryEnabled
+			? await aiDeliveryService.retryPending(c)
+			: [];
 		const monitors = await this.dueMonitors(c, now);
 		const outcomes = [];
 		for (const monitor of monitors) {
@@ -38,7 +40,9 @@ const aiSchedulerService = {
 				});
 				await c.env.db.prepare('UPDATE ai_monitor SET next_run_at = ?, updated_at = CURRENT_TIMESTAMP WHERE monitor_id = ?')
 					.bind(nextRunAt, monitor.monitorId).run();
-				if (['succeeded', 'partial'].includes(outcome.status)) await aiDeliveryService.deliver(c, outcome.digestId);
+				if (system.deliveryEnabled && ['succeeded', 'partial'].includes(outcome.status)) {
+					await aiDeliveryService.deliver(c, outcome.digestId);
+				}
 				outcomes.push({ monitorId: monitor.monitorId, status: outcome.status });
 			} catch (error) {
 				await c.env.db.prepare('UPDATE ai_monitor SET next_run_at = ?, updated_at = CURRENT_TIMESTAMP WHERE monitor_id = ?')
