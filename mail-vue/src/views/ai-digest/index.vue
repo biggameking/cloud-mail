@@ -40,7 +40,11 @@
         <button v-for="digest in digests" :key="digest.digestId" class="digest-row" type="button" @click="openDigest(digest.digestId)">
           <span class="digest-mark"><Icon icon="hugeicons:ai-magic" width="20"/></span>
           <span class="digest-copy"><strong>{{ digest.title }}</strong><small>{{ digest.monitorName }} · {{ formatTime(digest.createdAt) }}</small><span>{{ digest.overview }}</span></span>
-          <span class="digest-stats"><el-tag v-if="digest.importantCount" type="danger">{{ $t('aiImportantCount', {count: digest.importantCount}) }}</el-tag><Icon icon="ep:arrow-right"/></span>
+          <span class="digest-stats">
+            <el-tag size="small" :type="deliveryType(digest.deliveryStatus)">{{ $t(`aiDelivery_${digest.deliveryStatus}`) }}</el-tag>
+            <el-tag v-if="digest.importantCount" type="danger">{{ $t('aiImportantCount', {count: digest.importantCount}) }}</el-tag>
+            <Icon icon="ep:arrow-right"/>
+          </span>
         </button>
       </div>
     </section>
@@ -110,6 +114,7 @@ function openEdit(monitor) { editingMonitor.value = monitor; dialogOpen.value = 
 function accountLabel(ids) { return ids.map(id => accounts.value.find(account => account.accountId === id)?.email).filter(Boolean).join(' · ') }
 function formatTime(value) { return value ? new Intl.DateTimeFormat(undefined, {dateStyle: 'medium', timeStyle: 'short'}).format(new Date(`${value.replace(' ', 'T')}Z`)) : '' }
 function priorityType(priority) { return priority === 'high' ? 'danger' : priority === 'medium' ? 'warning' : 'info' }
+function deliveryType(status) { return status === 'sent' ? 'success' : status === 'failed' ? 'danger' : 'info' }
 
 async function saveMonitor(form) {
   saving.value = true

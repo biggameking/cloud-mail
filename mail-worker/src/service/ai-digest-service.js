@@ -23,8 +23,7 @@ const filterEmail = (email, monitor) => {
 };
 
 const aiDigestService = {
-	async usageToday(c) {
-		assertAdminAiAccess(c);
+	async readUsage(c) {
 		const config = getAiConfig(c.env);
 		const row = await c.env.db.prepare(`SELECT calls, input_tokens, output_tokens, estimated_neurons, skipped_runs
 			FROM ai_usage_daily WHERE usage_date = ? AND provider = ? AND model = ?`)
@@ -45,6 +44,11 @@ const aiDigestService = {
 				maxDailyEstimatedNeurons: config.maxDailyEstimatedNeurons
 			}
 		};
+	},
+
+	async usageToday(c) {
+		assertAdminAiAccess(c);
+		return this.readUsage(c);
 	},
 
 	async list(c) {
@@ -100,16 +104,26 @@ const aiDigestService = {
 		return { ...row, attList: [] };
 	},
 
-	async recordUsage(c, config, usage) {
-		await c.env.db.prepare(`INSERT INTO ai_usage_daily (
+	async reserveUsage(c, config, usage) {
+		const result = await c.env.db.prepare(`INSERT INTO ai_usage_daily (
 			usage_date, provider, model, calls, input_tokens, output_tokens, estimated_neurons
 		) VALUES (?, ?, ?, 1, ?, ?, ?)
 		ON CONFLICT(usage_date, provider, model) DO UPDATE SET
 			calls = calls + 1,
 			input_tokens = input_tokens + excluded.input_tokens,
 			output_tokens = output_tokens + excluded.output_tokens,
-			estimated_neurons = estimated_neurons + excluded.estimated_neurons`)
-			.bind(todayUtc(), config.provider, config.model, usage.inputTokens, usage.outputTokens, usage.estimatedNeurons).run();
+			estimated_neurons = estimated_neurons + excluded.estimated_neurons
+		WHERE calls + 1 <= ? AND input_tokens + excluded.input_tokens <= ?
+			AND output_tokens + excluded.output_tokens <= ? AND estimated_neurons + excluded.estimated_neurons <= ?`)
+			.bind(todayUtc(), config.provider, config.model, usage.inputTokens, usage.outputTokens, usage.estimatedNeurons,
+				config.maxDailyCalls, config.maxDailyInputTokens, config.maxDailyOutputTokens, config.maxDailyEstimatedNeurons).run();
+		return result.meta.changes === 1;
+	},
+
+	async recordSkipped(c, config) {
+		await c.env.db.prepare(`INSERT INTO ai_usage_daily (usage_date, provider, model, skipped_runs)
+			VALUES (?, ?, ?, 1) ON CONFLICT(usage_date, provider, model) DO UPDATE SET skipped_runs = skipped_runs + 1`)
+			.bind(todayUtc(), config.provider, config.model).run();
 	},
 
 	async preview(c, body) {
@@ -117,45 +131,83 @@ const aiDigestService = {
 		const config = getAiConfig(c.env);
 		if (!config.enabled) throw new BizError(t('aiMonitoringDisabled'), 409);
 		const monitor = await aiMonitorService.get(c, body.monitorId);
-		const usage = await this.usageToday(c);
+		const generated = await this.generate(c, monitor, {
+			periodStart: `manual:${crypto.randomUUID()}`,
+			periodEnd: new Date().toISOString(),
+			useCursor: false,
+			advanceCursor: false,
+			deliveryRequested: false
+		});
+		if (generated.status === 'empty') throw new BizError(t('aiNoEligibleEmails'), 400);
+		if (generated.status === 'budget_skipped') throw new BizError(`${t('aiBudgetExceeded')}: ${generated.reasonCode}`, 429);
+		if (generated.status !== 'succeeded') throw new BizError(t('aiPreviewUnavailable'), 409);
+		return this.detail(c, generated.digestId);
+	},
+
+	async generate(c, monitor, options) {
+		const config = getAiConfig(c.env);
+		if (!config.enabled) return { status: 'disabled' };
+		let run;
+		try {
+			run = await c.env.db.prepare(`INSERT INTO ai_digest_run (
+				monitor_id, period_start, period_end, status, model, prompt_version, started_at
+			) VALUES (?, ?, ?, 'pending', ?, ?, CURRENT_TIMESTAMP)`)
+				.bind(monitor.monitorId, options.periodStart, options.periodEnd, config.model, PROMPT_VERSION).run();
+		} catch (error) {
+			if (/UNIQUE constraint failed/i.test(error?.message || '')) return { status: 'duplicate' };
+			throw error;
+		}
+		const runId = Number(run.meta.last_row_id);
 		const placeholders = monitor.accountIds.map(() => '?').join(',');
 		const query = `SELECT e.email_id, e.send_email, e.subject, e.text, e.content, e.create_time
 			FROM email e JOIN account a ON a.account_id = e.account_id JOIN user u ON u.user_id = e.user_id
 			WHERE e.account_id IN (${placeholders}) AND e.type = 0 AND e.is_del = 0 AND e.status != 6
 			AND a.is_del = 0 AND a.status = 0 AND u.is_del = 0 AND u.status = 0
-			AND (? = -1 OR e.unread = ?) ORDER BY e.email_id DESC LIMIT ?`;
+			AND e.email_id > ? AND (? = -1 OR e.unread = ?) ORDER BY e.email_id ASC LIMIT ?`;
+		const cursor = options.useCursor ? monitor.lastProcessedEmailId : 0;
 		const bindingParams = monitor.includeRead
-			? [...monitor.accountIds, -1, -1, monitor.maxEmailsPerRun]
-			: [...monitor.accountIds, 0, 0, monitor.maxEmailsPerRun];
+			? [...monitor.accountIds, cursor, -1, -1, monitor.maxEmailsPerRun]
+			: [...monitor.accountIds, cursor, 0, 0, monitor.maxEmailsPerRun];
 		const { results: candidates } = await c.env.db.prepare(query).bind(...bindingParams).all();
-		const selected = candidates.filter(email => filterEmail(email, monitor)).reverse();
-		if (!selected.length) throw new BizError(t('aiNoEligibleEmails'), 400);
+		const selected = candidates.filter(email => filterEmail(email, monitor));
+		if (!selected.length) {
+			await c.env.db.prepare(`UPDATE ai_digest_run SET status = 'skipped', reason_code = 'no_eligible_email',
+				email_count = 0, filtered_count = ?, finished_at = CURRENT_TIMESTAMP WHERE run_id = ?`)
+				.bind(candidates.length, runId).run();
+			return { status: 'empty', runId };
+		}
 		const emails = selected.map(email => normalizeEmailForAi(email, monitor.maxCharsPerEmail));
 		const userPrompt = buildDigestPrompt({ emails, language: monitor.language });
 		const estimatedInputTokens = estimateTokens(DIGEST_SYSTEM_PROMPT.length + userPrompt.length);
+		await c.env.db.prepare(`UPDATE ai_digest_run SET status = 'running', email_count = ?, filtered_count = ?,
+			input_chars = ?, estimated_input_tokens = ? WHERE run_id = ?`)
+			.bind(selected.length, candidates.length - selected.length, userPrompt.length, estimatedInputTokens, runId).run();
+		const usage = await this.readUsage(c);
 		const budget = checkAiBudget({
 			current: usage,
 			requested: { inputTokens: estimatedInputTokens, outputTokens: 2048 },
 			limits: config
 		});
-		if (!budget.allowed) throw new BizError(`${t('aiBudgetExceeded')}: ${budget.reasonCode}`, 429);
-
-		const periodStart = `manual:${crypto.randomUUID()}`;
-		const periodEnd = new Date().toISOString();
-		const run = await c.env.db.prepare(`INSERT INTO ai_digest_run (
-			monitor_id, period_start, period_end, status, email_count, filtered_count, input_chars,
-			estimated_input_tokens, model, prompt_version, started_at
-		) VALUES (?, ?, ?, 'running', ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`)
-			.bind(monitor.monitorId, periodStart, periodEnd, selected.length, candidates.length - selected.length,
-				userPrompt.length, estimatedInputTokens, config.model, PROMPT_VERSION).run();
-		const runId = Number(run.meta.last_row_id);
+		if (!budget.allowed) {
+			await Promise.all([
+				this.recordSkipped(c, config),
+				c.env.db.prepare(`UPDATE ai_digest_run SET status = 'skipped', reason_code = ?, finished_at = CURRENT_TIMESTAMP WHERE run_id = ?`)
+					.bind(budget.reasonCode, runId).run()
+			]);
+			return { status: 'budget_skipped', reasonCode: budget.reasonCode, runId };
+		}
+		const reserved = await this.reserveUsage(c, config, {
+			inputTokens: estimatedInputTokens,
+			outputTokens: 2048,
+			estimatedNeurons: estimateNeurons({ inputTokens: estimatedInputTokens, outputTokens: 2048 })
+		});
+		if (!reserved) {
+			await c.env.db.prepare(`UPDATE ai_digest_run SET status = 'skipped', reason_code = 'concurrent_budget_limit',
+				finished_at = CURRENT_TIMESTAMP WHERE run_id = ?`).bind(runId).run();
+			return { status: 'budget_skipped', reasonCode: 'concurrent_budget_limit', runId };
+		}
 
 		try {
-			await this.recordUsage(c, config, {
-				inputTokens: estimatedInputTokens,
-				outputTokens: 2048,
-				estimatedNeurons: estimateNeurons({ inputTokens: estimatedInputTokens, outputTokens: 2048 })
-			});
 			const provider = new WorkersAiProvider(c.env.ai, config.model);
 			const raw = await provider.generateDigest({ systemPrompt: DIGEST_SYSTEM_PROMPT, userPrompt });
 			const providerContent = typeof raw === 'string' ? raw : raw?.response;
@@ -167,18 +219,22 @@ const aiDigestService = {
 			const actionCount = digest.items.reduce((total, item) => total + item.actions.length, 0);
 			const expiresAt = new Date(Date.now() + 30 * 86400000).toISOString();
 			const insertDigest = await c.env.db.prepare(`INSERT INTO ai_digest (
-				run_id, monitor_id, title, overview, content_json, important_count, action_count, expires_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-				.bind(runId, monitor.monitorId, digest.title, digest.overview, JSON.stringify(digest), importantCount, actionCount, expiresAt).run();
+				run_id, monitor_id, title, overview, content_json, important_count, action_count, delivery_status, expires_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+				.bind(runId, monitor.monitorId, digest.title, digest.overview, JSON.stringify(digest), importantCount, actionCount,
+					options.deliveryRequested ? 'pending' : 'not_requested', expiresAt).run();
 			const digestId = Number(insertDigest.meta.last_row_id);
+			const lastEmailId = Math.max(...emails.map(email => email.emailId));
 			await c.env.db.batch([
 				...digest.items.map(item => c.env.db.prepare(`INSERT INTO ai_digest_source (
 					digest_id, email_id, priority, category, summary, action_json
 				) VALUES (?, ?, ?, ?, ?, ?)`).bind(digestId, item.emailId, item.priority, item.category, item.summary, JSON.stringify(item.actions))),
 				c.env.db.prepare(`UPDATE ai_digest_run SET status = 'succeeded', input_tokens = ?, output_tokens = ?, finished_at = CURRENT_TIMESTAMP
-					WHERE run_id = ?`).bind(inputTokens, outputTokens, runId)
+					WHERE run_id = ?`).bind(inputTokens, outputTokens, runId),
+				...(options.advanceCursor ? [c.env.db.prepare(`UPDATE ai_monitor SET last_processed_email_id = ?, updated_at = CURRENT_TIMESTAMP
+					WHERE monitor_id = ?`).bind(lastEmailId, monitor.monitorId)] : [])
 			]);
-			return this.detail(c, digestId);
+			return { status: 'succeeded', digestId, runId, lastEmailId };
 		} catch (error) {
 			await c.env.db.prepare(`UPDATE ai_digest_run SET status = 'failed', error_class = ?, finished_at = CURRENT_TIMESTAMP WHERE run_id = ?`)
 				.bind(safeErrorClass(error), runId).run();

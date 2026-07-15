@@ -1,5 +1,6 @@
 import BizError from '../error/biz-error';
 import { t } from '../i18n/i18n';
+import { nextDailyRun } from '../ai/ai-schedule';
 
 const jsonArray = (value, field) => {
 	if (value === undefined) return [];
@@ -108,13 +109,14 @@ const aiMonitorService = {
 		assertAdminAiAccess(c);
 		const input = validateMonitorInput(body);
 		await this.validateAccounts(c, input.accountIds);
+		const nextRunAt = input.enabled ? nextDailyRun('08:00', 'Asia/Shanghai') : null;
 		const insert = await c.env.db.prepare(`INSERT INTO ai_monitor (
 			owner_user_id, name, enabled, include_read, sender_allowlist, sender_blocklist,
-			subject_keywords, max_emails_per_run, max_chars_per_email, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`).bind(
+			subject_keywords, max_emails_per_run, max_chars_per_email, next_run_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`).bind(
 			c.get('user').userId, input.name, input.enabled, input.includeRead,
 			JSON.stringify(input.senderAllowlist), JSON.stringify(input.senderBlocklist), JSON.stringify(input.subjectKeywords),
-			input.maxEmailsPerRun, input.maxCharsPerEmail
+			input.maxEmailsPerRun, input.maxCharsPerEmail, nextRunAt
 		).run();
 		const monitorId = Number(insert.meta.last_row_id);
 		await c.env.db.batch(input.accountIds.map(accountId => c.env.db.prepare(
@@ -129,13 +131,14 @@ const aiMonitorService = {
 		const input = validateMonitorInput(body);
 		await this.validateAccounts(c, input.accountIds);
 		const id = current.monitorId;
+		const nextRunAt = input.enabled ? (current.enabled && current.nextRunAt ? current.nextRunAt : nextDailyRun('08:00', 'Asia/Shanghai')) : null;
 		const statements = [
 			c.env.db.prepare(`UPDATE ai_monitor SET name = ?, enabled = ?, include_read = ?, sender_allowlist = ?,
-				sender_blocklist = ?, subject_keywords = ?, max_emails_per_run = ?, max_chars_per_email = ?, updated_at = CURRENT_TIMESTAMP
+				sender_blocklist = ?, subject_keywords = ?, max_emails_per_run = ?, max_chars_per_email = ?, next_run_at = ?, updated_at = CURRENT_TIMESTAMP
 				WHERE monitor_id = ?`).bind(
 				input.name, input.enabled, input.includeRead, JSON.stringify(input.senderAllowlist),
 				JSON.stringify(input.senderBlocklist), JSON.stringify(input.subjectKeywords), input.maxEmailsPerRun,
-				input.maxCharsPerEmail, id
+				input.maxCharsPerEmail, nextRunAt, id
 			),
 			c.env.db.prepare('DELETE FROM ai_monitor_account WHERE monitor_id = ?').bind(id),
 			...input.accountIds.map(accountId => c.env.db.prepare(

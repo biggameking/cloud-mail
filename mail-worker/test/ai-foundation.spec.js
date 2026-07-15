@@ -8,6 +8,8 @@ import WorkersAiProvider from '../src/ai/workers-ai-provider';
 import { dbInit } from '../src/init/init';
 import { assertAdminAiAccess, validateMonitorInput } from '../src/service/ai-monitor-service';
 import { filterEmail } from '../src/service/ai-digest-service';
+import aiDeliveryService, { escapeHtml, renderDigestEmail } from '../src/service/ai-delivery-service';
+import { localDateKey, nextDailyRun } from '../src/ai/ai-schedule';
 
 describe('AI monitoring foundation', () => {
 	it('is strictly disabled unless explicitly enabled', async () => {
@@ -108,5 +110,69 @@ describe('AI monitoring foundation', () => {
 		expect(filterEmail({send_email: 'attacker@example.net', subject: 'Invoice 42'}, monitor)).toBe(false);
 		const normalized = normalizeEmailForAi({email_id: 8, text: 'body', attachments: [{content: 'private-file'}]});
 		expect(JSON.stringify(normalized)).not.toContain('private-file');
+	});
+
+	it('uses stable Shanghai daily windows and schedules the next run', () => {
+		const now = new Date('2026-07-15T00:30:00.000Z');
+		expect(localDateKey(now, 'Asia/Shanghai')).toBe('2026-07-15');
+		expect(nextDailyRun('08:00', 'Asia/Shanghai', now)).toBe('2026-07-16T00:00:00.000Z');
+	});
+
+	it('escapes all model text in the outbound digest', () => {
+		expect(escapeHtml('<script>alert(1)</script>')).not.toContain('<script>');
+		const rendered = renderDigestEmail({
+			title: '<img src=x>', overview: 'safe',
+			content_json: JSON.stringify({items: [{priority: 'high', category: 'other', summary: '<script>x</script>', actions: []}]})
+		});
+		expect(rendered.html).not.toContain('<script>');
+		expect(rendered.html).not.toContain('<img src=x>');
+	});
+
+	it('claims a scheduled window before inference and skips duplicates', async () => {
+		const ai = {run: vi.fn()};
+		const db = {prepare: vi.fn(() => ({bind() { return this; }, run: async () => { throw new Error('UNIQUE constraint failed: ai_digest_run.monitor_id'); }}))};
+		const outcome = await (await import('../src/service/ai-digest-service')).default.generate({env: {db, ai, AI_MONITOR_ENABLED: 'true'}}, {
+			monitorId: 1, accountIds: [1]
+		}, {periodStart: '2026-07-15', periodEnd: '2026-07-15:08:00', useCursor: true});
+		expect(outcome.status).toBe('duplicate');
+		expect(ai.run).not.toHaveBeenCalled();
+	});
+
+	it('does not advance the cursor when model inference fails', async () => {
+		const statements = [];
+		const db = {prepare: vi.fn(sql => {
+			statements.push(sql);
+			return {
+				bind() { return this; },
+				run: async () => ({meta: {last_row_id: 9, changes: 1}}),
+				all: async () => ({results: [{email_id: 11, send_email: 'sender@example.com', subject: 'Subject', text: 'Body', create_time: '2026-07-15 08:00:00'}]}),
+				first: async () => null
+			};
+		})};
+		const monitor = {monitorId: 1, accountIds: [1], includeRead: true, maxEmailsPerRun: 50, maxCharsPerEmail: 6000,
+			lastProcessedEmailId: 0, language: 'zh-CN', senderAllowlist: [], senderBlocklist: [], subjectKeywords: []};
+		await expect((await import('../src/service/ai-digest-service')).default.generate({env: {
+			db, ai: {run: vi.fn().mockRejectedValue(new Error('provider unavailable'))}, AI_MONITOR_ENABLED: 'true'
+		}}, monitor, {periodStart: '2026-07-15', periodEnd: '2026-07-15:08:00', useCursor: true, advanceCursor: true, deliveryRequested: true})).rejects.toThrow('provider unavailable');
+		expect(statements.some(sql => /UPDATE ai_monitor SET last_processed_email_id/i.test(sql))).toBe(false);
+		expect(statements.some(sql => /status = 'failed'/i.test(sql))).toBe(true);
+	});
+
+	it('marks a failed delivery without invoking any model', async () => {
+		const statements = [];
+		const db = {prepare: vi.fn(sql => {
+			statements.push(sql);
+			return {
+				bind() { return this; },
+				run: async () => ({meta: {changes: 1}}),
+				first: async () => ({digest_id: 3, title: 'Digest', overview: 'Overview', content_json: '{"items":[]}'})
+			};
+		})};
+		const send = vi.fn().mockRejectedValue(new Error('delivery unavailable'));
+		await expect(aiDeliveryService.deliver({env: {
+			db, ai_digest_email: {send}, AI_DIGEST_DESTINATION: 'verified@example.com', admin: 'admin@example.com'
+		}}, 3)).rejects.toThrow('delivery unavailable');
+		expect(send).toHaveBeenCalledOnce();
+		expect(statements.some(sql => /delivery_status = 'failed'/i.test(sql))).toBe(true);
 	});
 });

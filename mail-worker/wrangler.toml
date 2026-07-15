@@ -26,6 +26,10 @@ bucket_name = "cloudmail-echoec-attachments"
 [ai]
 binding = "ai"
 
+[[send_email]]
+name = "ai_digest_email"
+destination_address = "xiealan555@gmail.com"
+
 [assets]
 binding = "assets"
 directory = "./dist"
@@ -33,7 +37,7 @@ not_found_handling = "single-page-application"
 run_worker_first = true
 
 [triggers]
-crons = ["0 16 * * *"]
+crons = ["*/30 * * * *", "0 16 * * *"]
 
 [observability]
 enabled = true
@@ -53,6 +57,7 @@ AI_MAX_DAILY_CALLS = "4"
 AI_MAX_DAILY_INPUT_TOKENS = "500000"
 AI_MAX_DAILY_OUTPUT_TOKENS = "20000"
 AI_MAX_DAILY_ESTIMATED_NEURONS = "7000"
+AI_DIGEST_DESTINATION = "xiealan555@gmail.com"
 
 [build]
 command = "pnpm --prefix ../mail-vue install --frozen-lockfile && pnpm --prefix ../mail-vue run build"
