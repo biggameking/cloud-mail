@@ -90,4 +90,12 @@ pnpm exec wrangler d1 export cloudmail-echoec-db --remote --output .backup/cloud
 
 ## 发布后验收记录
 
+在 `mail-worker` 目录运行以下只读检查，可输出不含正文、地址列表或凭据的 JSON 证据；任一安全/预算门禁失败时退出码为 1：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify-ai-observation.ps1
+```
+
+脚本固定检查 HTTPS 与五个安全响应头、系统/投递开关、唯一验收规则范围、重复窗口、越权来源、投递重试耗尽、最近 24 小时失败/校验失败/Provider 重试、超期调度和当日四项预算。D1 查询使用单条参数固定的只读 `SELECT`，验收结果必须显示 `rows_written = 0` / `changed_db = false`。
+
 连续 7 天每天记录：成功/部分/失败/跳过次数、重复窗口数、模型调用数、估算 Neurons、投递状态、积压峰值和正常收信抽检结果。首轮验收期内保持每日最多 2 次调用和 5,000 Neurons 熔断；出现重复摘要、越权、敏感数据泄露或正常收信回归时立即关闭数据库总开关，再关闭环境总开关并回滚上一 Worker Version。
