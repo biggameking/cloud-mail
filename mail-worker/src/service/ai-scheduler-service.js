@@ -6,7 +6,7 @@ import { localDateKey, nextDailyRun } from '../ai/ai-schedule';
 
 const aiSchedulerService = {
 	async dueMonitors(c, now = new Date()) {
-		const { results } = await c.env.db.prepare(`SELECT * FROM ai_monitor WHERE enabled = 1
+		const { results } = await c.env.db.prepare(`SELECT * FROM ai_monitor WHERE is_deleted = 0 AND enabled = 1
 			AND (next_run_at IS NULL OR next_run_at <= ?) ORDER BY COALESCE(next_run_at, created_at) ASC LIMIT 5`)
 			.bind(now.toISOString()).all();
 		const monitors = results.map(parseMonitorRow);
@@ -30,17 +30,18 @@ const aiSchedulerService = {
 		for (const monitor of monitors) {
 			const dateKey = localDateKey(now, monitor.timezone);
 			const nextRunAt = nextDailyRun(monitor.scheduleTime, monitor.timezone, now);
+			const deliveryRequested = system.deliveryEnabled && monitor.deliveryEnabled;
 			try {
 				const outcome = await aiDigestService.generate(c, monitor, {
 					periodStart: dateKey,
 					periodEnd: `${dateKey}:${monitor.scheduleTime}`,
 					useCursor: true,
 					advanceCursor: true,
-					deliveryRequested: system.deliveryEnabled
+					deliveryRequested
 				});
 				await c.env.db.prepare('UPDATE ai_monitor SET next_run_at = ?, updated_at = CURRENT_TIMESTAMP WHERE monitor_id = ?')
 					.bind(nextRunAt, monitor.monitorId).run();
-				if (system.deliveryEnabled && ['succeeded', 'partial'].includes(outcome.status)) {
+				if (deliveryRequested && ['succeeded', 'partial'].includes(outcome.status)) {
 					await aiDeliveryService.deliver(c, outcome.digestId);
 				}
 				outcomes.push({ monitorId: monitor.monitorId, status: outcome.status });

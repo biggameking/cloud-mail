@@ -4,6 +4,7 @@ import emailHtmlTemplate from '../src/template/email-html';
 import { normalizeForwardingTarget } from '../src/utils/forwarding-utils';
 import settingService from '../src/service/setting-service';
 import BizError from '../src/error/biz-error';
+import { RULES as rateLimitRules } from '../src/security/rate-limit';
 
 describe('production security baseline', () => {
 	it('uses a client-error status for ordinary business validation failures', () => {
@@ -39,14 +40,54 @@ describe('production security baseline', () => {
 		expect(response.status).toBe(401);
 	});
 
-	it('requires authentication for every AI management API', async () => {
-		const response = await SELF.fetch('https://cloudmail.echoec.com/api/ai/monitors');
-		expect(response.status).toBe(401);
+	it('requires authentication for every AI management API surface', async () => {
+		const requests = [
+			['GET', '/api/ai/monitors'],
+			['GET', '/api/ai/accounts'],
+			['GET', '/api/ai/system'],
+			['PUT', '/api/ai/system'],
+			['POST', '/api/ai/monitors'],
+			['PUT', '/api/ai/monitors/1'],
+			['DELETE', '/api/ai/monitors/1'],
+			['POST', '/api/ai/monitors/1/preview-count'],
+			['GET', '/api/ai/digests'],
+			['GET', '/api/ai/runs'],
+			['GET', '/api/ai/digests/1'],
+			['GET', '/api/ai/digests/1/source/1'],
+			['GET', '/api/ai/usage/today'],
+			['POST', '/api/ai/digests/preview'],
+			['POST', '/api/ai/digests/1/deliver'],
+			['PUT', '/api/ai/digests/1/retained'],
+			['DELETE', '/api/ai/digests/1']
+		];
+		for (const [method, path] of requests) {
+			const response = await SELF.fetch(`https://cloudmail.echoec.com${path}`, {
+				method,
+				headers: { 'Content-Type': 'application/json' },
+				body: ['POST', 'PUT'].includes(method) ? '{}' : undefined
+			});
+			expect(response.status, `${method} ${path}`).toBe(401);
+		}
 	});
 
 	it('does not treat lookalike authentication paths as public', async () => {
 		const response = await SELF.fetch('https://cloudmail.echoec.com/api/login-attacker');
 		expect(response.status).toBe(401);
+	});
+
+	it('rate-limits every AI mutation and preview endpoint', () => {
+		const guarded = new Set(rateLimitRules.filter(rule => rule.path.startsWith('/ai/')).map(rule => `${rule.method} ${rule.path}`));
+		expect(guarded).toEqual(new Set([
+			'PUT /ai/system',
+			'POST /ai/monitors',
+			'PUT /ai/monitors/:id',
+			'DELETE /ai/monitors/:id',
+			'POST /ai/monitors/:id/preview-count',
+			'POST /ai/digests/preview',
+			'POST /ai/digests/:id/deliver',
+			'PUT /ai/digests/:id/retained',
+			'DELETE /ai/digests/:id'
+		]));
 	});
 
 	it('reapplies runtime secrets when settings are already cached in the request', async () => {

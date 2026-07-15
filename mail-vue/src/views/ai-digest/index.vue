@@ -37,6 +37,8 @@
           </div>
           <div class="monitor-meta">
             <span><Icon icon="solar:letter-linear"/>{{ $t('aiEmailLimit', {count: monitor.maxEmailsPerRun}) }}</span>
+            <span><Icon icon="solar:clock-circle-linear"/>{{ monitor.scheduleTime }} · {{ monitor.timezone }}</span>
+            <span><Icon icon="solar:letter-opened-linear"/>{{ $t(monitor.deliveryEnabled ? 'aiRuleDeliveryOn' : 'aiRuleDeliveryOff') }}</span>
             <span><Icon icon="solar:shield-check-linear"/>{{ $t('aiAttachmentsExcluded') }}</span>
           </div>
           <div class="monitor-actions">

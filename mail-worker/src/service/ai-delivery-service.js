@@ -1,6 +1,6 @@
 import { t } from '../i18n/i18n';
 import BizError from '../error/biz-error';
-import aiMonitorService, { assertAdminAiAccess } from './ai-monitor-service';
+import aiMonitorService, { assertAdminAiAccess, VERIFIED_DESTINATION_KEY } from './ai-monitor-service';
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, character => ({
 	'&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
@@ -75,8 +75,11 @@ const aiDeliveryService = {
 
 	async retryPending(c) {
 		if (!c.env.ai_digest_email || !c.env.AI_DIGEST_DESTINATION_SECRET) return [];
-		const { results } = await c.env.db.prepare(`SELECT digest_id FROM ai_digest
-			WHERE delivery_status IN ('pending', 'failed') AND delivery_attempts < 3 ORDER BY digest_id ASC LIMIT 10`).all();
+		const { results } = await c.env.db.prepare(`SELECT d.digest_id FROM ai_digest d
+			JOIN ai_monitor m ON m.monitor_id = d.monitor_id
+			WHERE d.delivery_status IN ('pending', 'failed') AND d.delivery_attempts < 3
+			AND m.is_deleted = 0 AND m.enabled = 1 AND m.destination_key = ? ORDER BY d.digest_id ASC LIMIT 10`)
+			.bind(VERIFIED_DESTINATION_KEY).all();
 		const outcomes = [];
 		for (const row of results) {
 			try { outcomes.push(await this.deliver(c, row.digest_id)); }

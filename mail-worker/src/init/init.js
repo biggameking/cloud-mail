@@ -49,7 +49,8 @@ const dbInit = {
 			`ALTER TABLE ai_digest_run ADD COLUMN backlog_count INTEGER NOT NULL DEFAULT 0`,
 			`ALTER TABLE ai_digest_run ADD COLUMN duration_ms INTEGER`,
 			`ALTER TABLE ai_digest ADD COLUMN retained INTEGER NOT NULL DEFAULT 0`,
-			`ALTER TABLE ai_monitor ADD COLUMN category_filter TEXT NOT NULL DEFAULT '[]'`
+			`ALTER TABLE ai_monitor ADD COLUMN category_filter TEXT NOT NULL DEFAULT '[]'`,
+			`ALTER TABLE ai_monitor ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0`
 		]) {
 			try { await c.env.db.prepare(statement).run(); }
 			catch (error) { if (!error.message?.includes('duplicate column')) throw error; }
@@ -63,6 +64,7 @@ const dbInit = {
 				owner_user_id INTEGER NOT NULL,
 				name TEXT NOT NULL,
 				enabled INTEGER NOT NULL DEFAULT 0,
+				is_deleted INTEGER NOT NULL DEFAULT 0,
 				schedule_type TEXT NOT NULL DEFAULT 'daily',
 				schedule_time TEXT NOT NULL DEFAULT '08:00',
 				timezone TEXT NOT NULL DEFAULT 'Asia/Shanghai',
@@ -80,7 +82,7 @@ const dbInit = {
 				created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 				updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 			)`,
-			`CREATE INDEX IF NOT EXISTS idx_ai_monitor_due ON ai_monitor(enabled, next_run_at)`,
+			`CREATE INDEX IF NOT EXISTS idx_ai_monitor_due ON ai_monitor(is_deleted, enabled, next_run_at)`,
 			`CREATE INDEX IF NOT EXISTS idx_ai_monitor_owner ON ai_monitor(owner_user_id)`,
 			`CREATE TABLE IF NOT EXISTS ai_monitor_account (
 				monitor_id INTEGER NOT NULL,

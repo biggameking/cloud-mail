@@ -22,6 +22,31 @@ const filterEmail = (email, monitor) => {
 	return true;
 };
 
+const loadEligibleCandidates = async (c, monitor, { useCursor }) => {
+	const placeholders = monitor.accountIds.map(() => '?').join(',');
+	const query = `SELECT e.email_id, e.send_email, e.subject, e.text, e.content, e.create_time
+		FROM email e JOIN account a ON a.account_id = e.account_id AND a.user_id = e.user_id
+		JOIN user u ON u.user_id = e.user_id
+		WHERE e.account_id IN (${placeholders}) AND e.type = 0 AND e.is_del = 0 AND e.status != 6
+		AND a.is_del = 0 AND a.status = 0 AND u.is_del = 0 AND u.status = 0
+		AND e.email_id > ? AND (? = -1 OR e.unread = ?) ORDER BY e.email_id ASC LIMIT ?`;
+	const cursor = useCursor ? monitor.lastProcessedEmailId : 0;
+	const scanLimit = Math.min(Math.max(monitor.maxEmailsPerRun * 5, 250), 1000);
+	const bindingParams = monitor.includeRead
+		? [...monitor.accountIds, cursor, -1, -1, scanLimit]
+		: [...monitor.accountIds, cursor, 0, 0, scanLimit];
+	const { results: candidates } = await c.env.db.prepare(query).bind(...bindingParams).all();
+	const selectedCandidates = candidates.filter(email => filterEmail(email, monitor));
+	const backlogCount = Math.max(0, selectedCandidates.length - monitor.maxEmailsPerRun, candidates.length === scanLimit ? 1 : 0);
+	return {
+		candidates,
+		selectedCandidates,
+		selected: selectedCandidates.slice(0, monitor.maxEmailsPerRun),
+		backlogCount,
+		scanLimitReached: candidates.length === scanLimit
+	};
+};
+
 const aiDigestService = {
 	async readUsage(c) {
 		const config = getAiConfig(c.env);
@@ -49,6 +74,19 @@ const aiDigestService = {
 	async usageToday(c) {
 		assertAdminAiAccess(c);
 		return this.readUsage(c);
+	},
+
+	async previewCount(c, monitorId) {
+		assertAdminAiAccess(c);
+		const monitor = await aiMonitorService.get(c, monitorId);
+		const selection = await loadEligibleCandidates(c, monitor, { useCursor: false });
+		return {
+			eligibleCount: selection.selectedCandidates.length,
+			willProcessCount: selection.selected.length,
+			filteredCount: selection.candidates.length - selection.selectedCandidates.length,
+			backlogCount: selection.backlogCount,
+			scanLimitReached: selection.scanLimitReached
+		};
 	},
 
 	async list(c) {
@@ -102,7 +140,10 @@ const aiDigestService = {
 			s.summary, s.action_json AS actionJson, e.subject, e.send_email AS sendEmail, e.to_email AS toEmail,
 			e.create_time AS receivedAt
 			FROM ai_digest_source s JOIN email e ON e.email_id = s.email_id
-			WHERE s.digest_id = ? ORDER BY s.email_id DESC`).bind(id).all();
+			JOIN account a ON a.account_id = e.account_id AND a.user_id = e.user_id
+			JOIN user u ON u.user_id = e.user_id
+			WHERE s.digest_id = ? AND e.is_del = 0 AND a.is_del = 0 AND a.status = 0
+			AND u.is_del = 0 AND u.status = 0 ORDER BY s.email_id DESC`).bind(id).all();
 		return {
 			digestId: digest.digest_id,
 			monitorId: digest.monitor_id,
@@ -134,7 +175,10 @@ const aiDigestService = {
 			e.relation, e.message_id AS messageId, e.type, e.status, e.unread, e.create_time AS createTime,
 			0 AS isStar
 			FROM ai_digest_source s JOIN email e ON e.email_id = s.email_id
-			WHERE s.digest_id = ? AND s.email_id = ? AND e.is_del = 0`).bind(digest, email).first();
+			JOIN account a ON a.account_id = e.account_id AND a.user_id = e.user_id
+			JOIN user u ON u.user_id = e.user_id
+			WHERE s.digest_id = ? AND s.email_id = ? AND e.is_del = 0
+			AND a.is_del = 0 AND a.status = 0 AND u.is_del = 0 AND u.status = 0`).bind(digest, email).first();
 		if (!row) throw new BizError(t('aiDigestSourceNotFound'), 404);
 		return { ...row, attList: [] };
 	},
@@ -196,21 +240,9 @@ const aiDigestService = {
 			throw error;
 		}
 		const runId = Number(run.meta.last_row_id);
-		const placeholders = monitor.accountIds.map(() => '?').join(',');
-		const query = `SELECT e.email_id, e.send_email, e.subject, e.text, e.content, e.create_time
-			FROM email e JOIN account a ON a.account_id = e.account_id JOIN user u ON u.user_id = e.user_id
-			WHERE e.account_id IN (${placeholders}) AND e.type = 0 AND e.is_del = 0 AND e.status != 6
-			AND a.is_del = 0 AND a.status = 0 AND u.is_del = 0 AND u.status = 0
-			AND e.email_id > ? AND (? = -1 OR e.unread = ?) ORDER BY e.email_id ASC LIMIT ?`;
-		const cursor = options.useCursor ? monitor.lastProcessedEmailId : 0;
-		const scanLimit = Math.min(Math.max(monitor.maxEmailsPerRun * 5, 250), 1000);
-		const bindingParams = monitor.includeRead
-			? [...monitor.accountIds, cursor, -1, -1, scanLimit]
-			: [...monitor.accountIds, cursor, 0, 0, scanLimit];
-		const { results: candidates } = await c.env.db.prepare(query).bind(...bindingParams).all();
-		const selectedCandidates = candidates.filter(email => filterEmail(email, monitor));
-		const backlogCount = Math.max(0, selectedCandidates.length - monitor.maxEmailsPerRun, candidates.length === scanLimit ? 1 : 0);
-		const selected = selectedCandidates.slice(0, monitor.maxEmailsPerRun);
+		const { candidates, selectedCandidates, selected, backlogCount } = await loadEligibleCandidates(c, monitor, {
+			useCursor: options.useCursor
+		});
 		if (!selected.length) {
 			const statements = [c.env.db.prepare(`UPDATE ai_digest_run SET status = 'skipped', reason_code = 'no_eligible_email',
 				email_count = 0, filtered_count = ?, finished_at = CURRENT_TIMESTAMP WHERE run_id = ?`).bind(candidates.length, runId)];
@@ -287,5 +319,5 @@ const aiDigestService = {
 	}
 };
 
-export { filterEmail, todayUtc };
+export { filterEmail, loadEligibleCandidates, todayUtc };
 export default aiDigestService;

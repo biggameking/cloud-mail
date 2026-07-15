@@ -6,7 +6,7 @@ import { normalizeEmailForAi } from '../src/ai/email-normalizer';
 import { validateDigestOutput } from '../src/ai/ai-output-validator';
 import WorkersAiProvider from '../src/ai/workers-ai-provider';
 import { dbInit } from '../src/init/init';
-import aiMonitorService, { assertAdminAiAccess, validateMonitorInput } from '../src/service/ai-monitor-service';
+import aiMonitorService, { assertAdminAiAccess, parseMonitorRow, validateMonitorInput } from '../src/service/ai-monitor-service';
 import { filterEmail } from '../src/service/ai-digest-service';
 import aiDeliveryService, { escapeHtml, renderDigestEmail } from '../src/service/ai-delivery-service';
 import aiDigestService from '../src/service/ai-digest-service';
@@ -117,7 +117,7 @@ describe('AI monitoring foundation', () => {
 		await dbInit.v3_4DB({ env: { db } });
 		await dbInit.v3_4DB({ env: { db } });
 		expect(statements.filter(statement => /CREATE TABLE IF NOT EXISTS ai_system_config/i.test(statement))).toHaveLength(2);
-		expect(statements.filter(statement => /ALTER TABLE/i.test(statement))).toHaveLength(8);
+		expect(statements.filter(statement => /ALTER TABLE/i.test(statement))).toHaveLength(10);
 	});
 
 	it('requires both environment and database switches before scheduling', async () => {
@@ -125,6 +125,38 @@ describe('AI monitoring foundation', () => {
 		const db = { prepare: vi.fn(() => ({ first: async () => ({ enabled: 0, delivery_enabled: 0 }) })) };
 		expect(await aiScheduler.run({ env: { db, ai, AI_MONITOR_ENABLED: 'true' }, cron: '*/30 * * * *' })).toEqual({ status: 'stopped' });
 		expect(ai.run).not.toHaveBeenCalled();
+	});
+
+	it('keeps 48 empty half-hour schedules bounded and model-free', async () => {
+		const statements = [];
+		const ai = { run: vi.fn() };
+		const db = { prepare: vi.fn(sql => {
+			statements.push(sql);
+			return {
+				bind() { return this; },
+				first: async () => ({ enabled: 1, delivery_enabled: 0 }),
+				all: async () => ({ results: [] })
+			};
+		}) };
+		for (let halfHour = 0; halfHour < 48; halfHour += 1) {
+			expect(await aiScheduler.run({ env: { db, ai, AI_MONITOR_ENABLED: 'true' }, cron: '*/30 * * * *' }))
+				.toMatchObject({ status: 'completed', outcomes: [] });
+		}
+		expect(ai.run).not.toHaveBeenCalled();
+		expect(statements).toHaveLength(96);
+		expect(statements.every(sql => /ai_system_config|ai_monitor/i.test(sql))).toBe(true);
+	});
+
+	it('logs only a safe error class when the scheduler fails', async () => {
+		const schedulerRun = vi.spyOn(aiSchedulerService, 'run').mockRejectedValue(new Error('private subject and secret body'));
+		const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+		expect(await aiScheduler.run({ env: { AI_MONITOR_ENABLED: 'true' }, cron: '*/30 * * * *' })).toEqual({ status: 'failed' });
+		const serializedLogs = JSON.stringify(consoleError.mock.calls);
+		expect(serializedLogs).toContain('errorClass');
+		expect(serializedLogs).not.toContain('private subject');
+		expect(serializedLogs).not.toContain('secret body');
+		schedulerRun.mockRestore();
+		consoleError.mockRestore();
 	});
 
 	it('never retries or sends digest email while the delivery switch is off', async () => {
@@ -154,6 +186,36 @@ describe('AI monitoring foundation', () => {
 		dueMonitors.mockRestore();
 		generate.mockRestore();
 		retryPending.mockRestore();
+		deliver.mockRestore();
+	});
+
+	it('keeps automatic delivery disabled for a rule unless it explicitly opts in', async () => {
+		const context = {
+			env: {
+				AI_MONITOR_ENABLED: 'true',
+				db: { prepare: vi.fn(() => ({ bind() { return this; }, run: async () => ({ meta: { changes: 1 } }) })) }
+			}
+		};
+		const systemState = vi.spyOn(aiMonitorService, 'systemState').mockResolvedValue({ enabled: true, deliveryEnabled: true });
+		const retryPending = vi.spyOn(aiDeliveryService, 'retryPending').mockResolvedValue([]);
+		const dueMonitors = vi.spyOn(aiSchedulerService, 'dueMonitors').mockResolvedValue([{
+			monitorId: 7,
+			timezone: 'Asia/Shanghai',
+			scheduleTime: '08:00',
+			deliveryEnabled: false
+		}]);
+		const generate = vi.spyOn(aiDigestService, 'generate').mockResolvedValue({ status: 'succeeded', digestId: 9 });
+		const deliver = vi.spyOn(aiDeliveryService, 'deliver').mockResolvedValue({ status: 'sent' });
+
+		await aiSchedulerService.run(context, new Date('2026-07-15T00:30:00.000Z'));
+
+		expect(retryPending).toHaveBeenCalledOnce();
+		expect(generate).toHaveBeenCalledWith(context, expect.any(Object), expect.objectContaining({ deliveryRequested: false }));
+		expect(deliver).not.toHaveBeenCalled();
+		systemState.mockRestore();
+		retryPending.mockRestore();
+		dueMonitors.mockRestore();
+		generate.mockRestore();
 		deliver.mockRestore();
 	});
 
@@ -207,6 +269,22 @@ describe('AI monitoring foundation', () => {
 		systemState.mockRestore();
 	});
 
+	it('retries only digests whose enabled rule opted into the verified destination', async () => {
+		const statements = [];
+		const bindings = [];
+		const db = {prepare: vi.fn(sql => ({
+			bind(...values) { statements.push(sql); bindings.push(values); return this; },
+			all: async () => ({results: []})
+		}))};
+		expect(await aiDeliveryService.retryPending({env: {
+			db, ai_digest_email: {send: vi.fn()}, AI_DIGEST_DESTINATION_SECRET: 'verified@example.com'
+		}})).toEqual([]);
+		expect(statements[0]).toMatch(/JOIN ai_monitor/i);
+		expect(statements[0]).toMatch(/m\.enabled = 1/i);
+		expect(statements[0]).toMatch(/m\.destination_key = \?/i);
+		expect(bindings[0]).toEqual(['verified-destination']);
+	});
+
 	it('refuses to enable the database switch while the environment kill switch is off', async () => {
 		const context = {
 			env: { admin: 'admin@echoec.com', AI_MONITOR_ENABLED: 'false', db: { prepare: vi.fn() } },
@@ -235,11 +313,151 @@ describe('AI monitoring foundation', () => {
 		try { assertAdminAiAccess(context); } catch (error) { expect(error.code).toBe(403); }
 	});
 
+	it('rejects ordinary users across every AI management service before database access', async () => {
+		const db = { prepare: vi.fn(() => { throw new Error('database must not be reached'); }) };
+		const context = {
+			env: { admin: 'admin@echoec.com', db },
+			get: () => ({ userId: 2, email: 'user@echoec.com' })
+		};
+		const calls = [
+			() => aiMonitorService.systemState(context),
+			() => aiMonitorService.accounts(context),
+			() => aiMonitorService.list(context),
+			() => aiMonitorService.create(context, {}),
+			() => aiMonitorService.update(context, 1, {}),
+			() => aiMonitorService.remove(context, 1),
+			() => aiDigestService.usageToday(context),
+			() => aiDigestService.previewCount(context, 1),
+			() => aiDigestService.list(context),
+			() => aiDigestService.runs(context),
+			() => aiDigestService.detail(context, 1),
+			() => aiDigestService.source(context, 1, 1),
+			() => aiDigestService.preview(context, { monitorId: 1 }),
+			() => aiDigestService.setRetained(context, 1, true),
+			() => aiDigestService.remove(context, 1),
+			() => aiDeliveryService.request(context, 1)
+		];
+		for (const call of calls) await expect(call()).rejects.toMatchObject({ code: 403 });
+		expect(db.prepare).not.toHaveBeenCalled();
+	});
+
 	it('accepts only explicit mailbox mappings and bounded monitor limits', () => {
 		const input = validateMonitorInput({name: ' Daily ', accountIds: [4, 4, 7], maxEmailsPerRun: 999, maxCharsPerEmail: 99999, categoryFilter: ['finance', 'finance']});
-		expect(input).toMatchObject({name: 'Daily', accountIds: [4, 7], maxEmailsPerRun: 200, maxCharsPerEmail: 20000, categoryFilter: ['finance']});
+		expect(input).toMatchObject({name: 'Daily', accountIds: [4, 7], scheduleTime: '08:00', timezone: 'Asia/Shanghai', language: 'zh-CN', deliveryEnabled: false, maxEmailsPerRun: 200, maxCharsPerEmail: 20000, categoryFilter: ['finance']});
 		expect(() => validateMonitorInput({name: 'Bad category', accountIds: [4], categoryFilter: ['execute_mail_command']})).toThrow();
+		expect(() => validateMonitorInput({name: 'Bad time', accountIds: [4], scheduleTime: '08:15'})).toThrow();
+		expect(() => validateMonitorInput({name: 'Bad timezone', accountIds: [4], timezone: 'Mars/Olympus'})).toThrow();
+		expect(() => validateMonitorInput({name: 'Bad language', accountIds: [4], language: 'xx-ZZ'})).toThrow();
 		expect(() => validateMonitorInput({name: 'Empty', accountIds: []})).toThrow();
+	});
+
+	it('exposes only a boolean rule delivery preference, never a destination address', () => {
+		const monitor = parseMonitorRow({
+			monitor_id: 1, owner_user_id: 1, name: 'Daily', enabled: 1, schedule_type: 'daily',
+			schedule_time: '08:00', timezone: 'Asia/Shanghai', language: 'zh-CN', destination_key: 'verified-destination',
+			include_read: 1, sender_allowlist: '[]', sender_blocklist: '[]', subject_keywords: '[]', category_filter: '[]',
+			max_emails_per_run: 50, max_chars_per_email: 6000, last_processed_email_id: 0
+		});
+		expect(monitor.deliveryEnabled).toBe(true);
+		expect(monitor).not.toHaveProperty('destinationKey');
+		expect(JSON.stringify(monitor)).not.toContain('@');
+	});
+
+	it('persists schedule, language, and rule delivery with an exact D1 binding contract', async () => {
+		const prepared = [];
+		const db = {
+			prepare: vi.fn(sql => ({
+				bind(...values) {
+					expect((sql.match(/\?/g) || []).length).toBe(values.length);
+					prepared.push({sql, values});
+					return this;
+				},
+				run: async () => ({meta: {last_row_id: 3}})
+			})),
+			batch: vi.fn().mockResolvedValue([])
+		};
+		const validateAccounts = vi.spyOn(aiMonitorService, 'validateAccounts').mockResolvedValue(undefined);
+		const getMonitor = vi.spyOn(aiMonitorService, 'get').mockResolvedValue({monitorId: 3});
+		const context = {env: {admin: 'admin@echoec.com', db}, get: () => ({userId: 1, email: 'admin@echoec.com'})};
+
+		await aiMonitorService.create(context, {
+			name: 'UTC digest', enabled: true, accountIds: [4], scheduleTime: '12:30', timezone: 'UTC',
+			language: 'en-US', deliveryEnabled: true
+		});
+
+		const insert = prepared.find(item => /INSERT INTO ai_monitor/i.test(item.sql));
+		expect(insert.values).toEqual(expect.arrayContaining(['12:30', 'UTC', 'en-US', 'verified-destination']));
+		expect(db.batch).toHaveBeenCalledOnce();
+		validateAccounts.mockRestore();
+		getMonitor.mockRestore();
+	});
+
+	it('soft-deletes a monitoring rule without deleting its historical digests', async () => {
+		const statements = [];
+		const batch = vi.fn(async items => items);
+		const db = {prepare: vi.fn(sql => {
+			statements.push(sql);
+			return {
+				bind() { return this; },
+				first: async () => sql.includes('SELECT * FROM ai_monitor') ? {
+					monitor_id: 1, owner_user_id: 1, name: 'Daily', enabled: 1, is_deleted: 0,
+					schedule_type: 'daily', schedule_time: '08:00', timezone: 'Asia/Shanghai', language: 'zh-CN',
+					destination_key: '', include_read: 1, sender_allowlist: '[]', sender_blocklist: '[]',
+					subject_keywords: '[]', category_filter: '[]', max_emails_per_run: 50, max_chars_per_email: 6000,
+					last_processed_email_id: 0
+				} : null,
+				all: async () => ({results: []})
+			};
+		}), batch};
+		const context = {env: {admin: 'admin@echoec.com', db}, get: () => ({email: 'admin@echoec.com'})};
+		await aiMonitorService.remove(context, 1);
+		expect(batch).toHaveBeenCalledOnce();
+		expect(statements.some(sql => /UPDATE ai_monitor SET enabled = 0, is_deleted = 1/i.test(sql))).toBe(true);
+		expect(statements.some(sql => /DELETE FROM ai_monitor WHERE/i.test(sql))).toBe(false);
+		expect(statements.some(sql => /DELETE FROM ai_digest/i.test(sql))).toBe(false);
+	});
+
+	it('previews eligible counts without calling the model or serializing message content', async () => {
+		const monitor = {monitorId: 1, accountIds: [4], includeRead: true, maxEmailsPerRun: 1, maxCharsPerEmail: 6000,
+			lastProcessedEmailId: 0, senderAllowlist: [], senderBlocklist: [], subjectKeywords: []};
+		const getMonitor = vi.spyOn(aiMonitorService, 'get').mockResolvedValue(monitor);
+		const db = {prepare: vi.fn(() => ({
+			bind() { return this; },
+			all: async () => ({results: [
+				{email_id: 1, send_email: 'one@example.com', subject: 'One', text: 'private one'},
+				{email_id: 2, send_email: 'two@example.com', subject: 'Two', text: 'private two'}
+			]})
+		}))};
+		const context = {env: {admin: 'admin@echoec.com', db, ai: {run: vi.fn()}}, get: () => ({email: 'admin@echoec.com'})};
+		const result = await aiDigestService.previewCount(context, 1);
+		expect(result).toEqual({eligibleCount: 2, willProcessCount: 1, filteredCount: 0, backlogCount: 1, scanLimitReached: false});
+		expect(context.env.ai.run).not.toHaveBeenCalled();
+		expect(JSON.stringify(result)).not.toContain('private');
+		getMonitor.mockRestore();
+	});
+
+	it('rechecks active mailbox and user state before exposing historical digest sources', async () => {
+		const statements = [];
+		const db = {prepare: vi.fn(sql => {
+			statements.push(sql);
+			return {
+				bind() { return this; },
+				first: async () => sql.includes('FROM ai_digest d') ? {
+					digest_id: 1, monitor_id: 1, monitor_name: 'Daily', title: 'Digest', overview: 'Overview',
+					important_count: 0, action_count: 0, run_status: 'succeeded', backlog_count: 0,
+					delivery_status: 'not_requested', delivery_attempts: 0, retained: 0, created_at: '2026-07-15 00:00:00'
+				} : null,
+				all: async () => ({results: []})
+			};
+		})};
+		const context = {env: {admin: 'admin@echoec.com', db}, get: () => ({email: 'admin@echoec.com'})};
+		const detail = await aiDigestService.detail(context, 1);
+		expect(detail.items).toEqual([]);
+		const sourceQuery = statements.find(sql => /FROM ai_digest_source s/i.test(sql));
+		expect(sourceQuery).toMatch(/JOIN account a/i);
+		expect(sourceQuery).toMatch(/JOIN user u/i);
+		expect(sourceQuery).toMatch(/a\.is_del = 0/i);
+		expect(sourceQuery).toMatch(/u\.status = 0/i);
 	});
 
 	it('filters configured senders without ever serializing attachments', () => {

@@ -3,6 +3,9 @@ import { t } from '../i18n/i18n';
 import { nextDailyRun } from '../ai/ai-schedule';
 
 const DIGEST_CATEGORIES = new Set(['action_required', 'deadline', 'notification', 'finance', 'account_security', 'newsletter', 'other']);
+const MONITOR_TIMEZONES = new Set(['Asia/Shanghai', 'UTC']);
+const MONITOR_LANGUAGES = new Set(['zh-CN', 'en-US']);
+const VERIFIED_DESTINATION_KEY = 'verified-destination';
 
 const jsonArray = (value, field) => {
 	if (value === undefined) return [];
@@ -26,7 +29,7 @@ const parseMonitorRow = row => row ? ({
 	scheduleTime: row.schedule_time,
 	timezone: row.timezone,
 	language: row.language,
-	destinationKey: row.destination_key,
+	deliveryEnabled: row.destination_key === VERIFIED_DESTINATION_KEY,
 	includeRead: row.include_read === 1,
 	senderAllowlist: JSON.parse(row.sender_allowlist || '[]'),
 	senderBlocklist: JSON.parse(row.sender_blocklist || '[]'),
@@ -50,6 +53,15 @@ const validateMonitorInput = body => {
 	}
 	const maxEmailsPerRun = Math.min(Math.max(Number(body.maxEmailsPerRun) || 50, 1), 200);
 	const maxCharsPerEmail = Math.min(Math.max(Number(body.maxCharsPerEmail) || 6000, 500), 20000);
+	const scheduleTime = String(body.scheduleTime || '08:00');
+	const scheduleParts = /^(\d{2}):(\d{2})$/.exec(scheduleTime);
+	if (!scheduleParts || Number(scheduleParts[1]) > 23 || Number(scheduleParts[2]) > 59 || Number(scheduleParts[2]) % 30 !== 0) {
+		throw new BizError(t('aiInvalidSchedule'), 400);
+	}
+	const timezone = String(body.timezone || 'Asia/Shanghai');
+	if (!MONITOR_TIMEZONES.has(timezone)) throw new BizError(t('aiInvalidTimezone'), 400);
+	const language = String(body.language || 'zh-CN');
+	if (!MONITOR_LANGUAGES.has(language)) throw new BizError(t('aiInvalidLanguage'), 400);
 	const categoryFilter = jsonArray(body.categoryFilter, 'categoryFilter');
 	if (categoryFilter.some(category => !DIGEST_CATEGORIES.has(category))) throw new BizError(`${t('aiInvalidFilter')}: categoryFilter`, 400);
 	return {
@@ -61,6 +73,10 @@ const validateMonitorInput = body => {
 		senderBlocklist: jsonArray(body.senderBlocklist, 'senderBlocklist'),
 		subjectKeywords: jsonArray(body.subjectKeywords, 'subjectKeywords'),
 		categoryFilter,
+		scheduleTime,
+		timezone,
+		language,
+		deliveryEnabled: body.deliveryEnabled === true,
 		maxEmailsPerRun,
 		maxCharsPerEmail
 	};
@@ -103,7 +119,7 @@ const aiMonitorService = {
 
 	async list(c) {
 		assertAdminAiAccess(c);
-		const { results } = await c.env.db.prepare('SELECT * FROM ai_monitor ORDER BY monitor_id DESC').all();
+		const { results } = await c.env.db.prepare('SELECT * FROM ai_monitor WHERE is_deleted = 0 ORDER BY monitor_id DESC').all();
 		const monitors = results.map(parseMonitorRow);
 		if (!monitors.length) return monitors;
 		const mappings = await c.env.db.prepare('SELECT monitor_id, account_id FROM ai_monitor_account ORDER BY account_id').all();
@@ -116,7 +132,7 @@ const aiMonitorService = {
 		assertAdminAiAccess(c);
 		const id = Number(monitorId);
 		if (!Number.isInteger(id) || id <= 0) throw new BizError(t('aiInvalidMonitor'), 400);
-		const row = await c.env.db.prepare('SELECT * FROM ai_monitor WHERE monitor_id = ?').bind(id).first();
+		const row = await c.env.db.prepare('SELECT * FROM ai_monitor WHERE monitor_id = ? AND is_deleted = 0').bind(id).first();
 		if (!row) throw new BizError(t('aiMonitorNotFound'), 404);
 		const monitor = parseMonitorRow(row);
 		const mappings = await c.env.db.prepare('SELECT account_id FROM ai_monitor_account WHERE monitor_id = ? ORDER BY account_id').bind(id).all();
@@ -137,12 +153,14 @@ const aiMonitorService = {
 		assertAdminAiAccess(c);
 		const input = validateMonitorInput(body);
 		await this.validateAccounts(c, input.accountIds);
-		const nextRunAt = input.enabled ? nextDailyRun('08:00', 'Asia/Shanghai') : null;
+		const nextRunAt = input.enabled ? nextDailyRun(input.scheduleTime, input.timezone) : null;
 		const insert = await c.env.db.prepare(`INSERT INTO ai_monitor (
-			owner_user_id, name, enabled, include_read, sender_allowlist, sender_blocklist,
-			subject_keywords, category_filter, max_emails_per_run, max_chars_per_email, next_run_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`).bind(
-			c.get('user').userId, input.name, input.enabled, input.includeRead,
+			owner_user_id, name, enabled, schedule_time, timezone, language, destination_key, include_read,
+			sender_allowlist, sender_blocklist, subject_keywords, category_filter, max_emails_per_run,
+			max_chars_per_email, next_run_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`).bind(
+			c.get('user').userId, input.name, input.enabled, input.scheduleTime, input.timezone, input.language,
+			input.deliveryEnabled ? VERIFIED_DESTINATION_KEY : '', input.includeRead,
 			JSON.stringify(input.senderAllowlist), JSON.stringify(input.senderBlocklist), JSON.stringify(input.subjectKeywords), JSON.stringify(input.categoryFilter),
 			input.maxEmailsPerRun, input.maxCharsPerEmail, nextRunAt
 		).run();
@@ -159,12 +177,17 @@ const aiMonitorService = {
 		const input = validateMonitorInput(body);
 		await this.validateAccounts(c, input.accountIds);
 		const id = current.monitorId;
-		const nextRunAt = input.enabled ? (current.enabled && current.nextRunAt ? current.nextRunAt : nextDailyRun('08:00', 'Asia/Shanghai')) : null;
+		const scheduleChanged = current.scheduleTime !== input.scheduleTime || current.timezone !== input.timezone;
+		const nextRunAt = input.enabled
+			? (current.enabled && !scheduleChanged && current.nextRunAt ? current.nextRunAt : nextDailyRun(input.scheduleTime, input.timezone))
+			: null;
 		const statements = [
-			c.env.db.prepare(`UPDATE ai_monitor SET name = ?, enabled = ?, include_read = ?, sender_allowlist = ?,
+			c.env.db.prepare(`UPDATE ai_monitor SET name = ?, enabled = ?, schedule_time = ?, timezone = ?, language = ?, destination_key = ?,
+				include_read = ?, sender_allowlist = ?,
 				sender_blocklist = ?, subject_keywords = ?, category_filter = ?, max_emails_per_run = ?, max_chars_per_email = ?, next_run_at = ?, updated_at = CURRENT_TIMESTAMP
 				WHERE monitor_id = ?`).bind(
-				input.name, input.enabled, input.includeRead, JSON.stringify(input.senderAllowlist),
+				input.name, input.enabled, input.scheduleTime, input.timezone, input.language,
+				input.deliveryEnabled ? VERIFIED_DESTINATION_KEY : '', input.includeRead, JSON.stringify(input.senderAllowlist),
 				JSON.stringify(input.senderBlocklist), JSON.stringify(input.subjectKeywords), JSON.stringify(input.categoryFilter), input.maxEmailsPerRun,
 				input.maxCharsPerEmail, nextRunAt, id
 			),
@@ -182,10 +205,18 @@ const aiMonitorService = {
 		const current = await this.get(c, monitorId);
 		await c.env.db.batch([
 			c.env.db.prepare('DELETE FROM ai_monitor_account WHERE monitor_id = ?').bind(current.monitorId),
-			c.env.db.prepare('DELETE FROM ai_monitor WHERE monitor_id = ?').bind(current.monitorId)
+			c.env.db.prepare(`UPDATE ai_monitor SET enabled = 0, is_deleted = 1, next_run_at = NULL,
+				updated_at = CURRENT_TIMESTAMP WHERE monitor_id = ?`).bind(current.monitorId)
 		]);
 	}
 };
 
-export { assertAdminAiAccess, parseMonitorRow, validateMonitorInput };
+export {
+	MONITOR_LANGUAGES,
+	MONITOR_TIMEZONES,
+	VERIFIED_DESTINATION_KEY,
+	assertAdminAiAccess,
+	parseMonitorRow,
+	validateMonitorInput
+};
 export default aiMonitorService;

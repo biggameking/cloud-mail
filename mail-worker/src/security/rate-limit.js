@@ -9,8 +9,15 @@ const RULES = [
 	{ method: 'POST', path: '/account/add', limit: 20, windowSeconds: 3600 },
 	{ method: 'PUT', path: '/account/setForward', limit: 20, windowSeconds: 3600 },
 	{ method: 'POST', path: '/setting/set', limit: 20, windowSeconds: 3600 },
+	{ method: 'PUT', path: '/ai/system', limit: 20, windowSeconds: 3600 },
+	{ method: 'POST', path: '/ai/monitors', limit: 20, windowSeconds: 3600 },
+	{ method: 'PUT', path: '/ai/monitors/:id', pattern: /^\/ai\/monitors\/\d+$/, limit: 30, windowSeconds: 3600 },
+	{ method: 'DELETE', path: '/ai/monitors/:id', pattern: /^\/ai\/monitors\/\d+$/, limit: 20, windowSeconds: 3600 },
+	{ method: 'POST', path: '/ai/monitors/:id/preview-count', pattern: /^\/ai\/monitors\/\d+\/preview-count$/, limit: 60, windowSeconds: 3600 },
 	{ method: 'POST', path: '/ai/digests/preview', limit: 6, windowSeconds: 3600 },
-	{ method: 'POST', path: '/ai/digests/:id/deliver', pattern: /^\/ai\/digests\/\d+\/deliver$/, limit: 10, windowSeconds: 3600 }
+	{ method: 'POST', path: '/ai/digests/:id/deliver', pattern: /^\/ai\/digests\/\d+\/deliver$/, limit: 10, windowSeconds: 3600 },
+	{ method: 'PUT', path: '/ai/digests/:id/retained', pattern: /^\/ai\/digests\/\d+\/retained$/, limit: 30, windowSeconds: 3600 },
+	{ method: 'DELETE', path: '/ai/digests/:id', pattern: /^\/ai\/digests\/\d+$/, limit: 30, windowSeconds: 3600 }
 ];
 
 async function hashPrincipal(value) {
@@ -39,3 +46,5 @@ app.use('*', async (c, next) => {
 	await c.env.kv.put(key, String(current + 1), { expirationTtl: rule.windowSeconds + 60 });
 	return next();
 });
+
+export { RULES };
