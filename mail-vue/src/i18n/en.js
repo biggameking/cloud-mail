@@ -36,6 +36,8 @@ const en = {
 	aiImportantCount: '{count} important',
 	aiOpenSource: 'Open source email',
 	aiPreviewReady: 'Safe preview generated',
+	aiDeliverDigest: 'Send this digest',
+	aiDigestDelivered: 'Digest delivered to the verified mailbox',
 	aiDeleteMonitorConfirm: 'Delete monitoring rule “{name}”?',
 	aiMonitoringEnabled: 'Included in AI monitoring',
 	aiConfigureMonitoring: 'Configure AI monitoring',

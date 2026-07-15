@@ -145,6 +145,56 @@ describe('AI monitoring foundation', () => {
 		deliver.mockRestore();
 	});
 
+	it('rejects explicit digest delivery while the delivery switch is off', async () => {
+		const systemState = vi.spyOn(aiMonitorService, 'systemState').mockResolvedValue({
+			environmentEnabled: true,
+			enabled: true,
+			deliveryEnabled: false
+		});
+		const send = vi.fn();
+		const context = {
+			env: { admin: 'admin@example.com', ai_digest_email: { send }, AI_DIGEST_DESTINATION: 'verified@example.com' },
+			get: () => ({ userId: 1, email: 'admin@example.com' })
+		};
+
+		await expect(aiDeliveryService.request(context, 3)).rejects.toMatchObject({ code: 409 });
+		expect(send).not.toHaveBeenCalled();
+		systemState.mockRestore();
+	});
+
+	it('delivers an existing digest only to the configured destination', async () => {
+		const systemState = vi.spyOn(aiMonitorService, 'systemState').mockResolvedValue({
+			environmentEnabled: true,
+			enabled: true,
+			deliveryEnabled: true
+		});
+		const statements = [];
+		const db = { prepare: vi.fn(sql => {
+			statements.push(sql);
+			return {
+				bind() { return this; },
+				run: async () => ({ meta: { changes: 1 } }),
+				first: async () => sql.includes('delivery_status, delivery_attempts')
+					? { delivery_status: 'not_requested', delivery_attempts: 0 }
+					: { digest_id: 3, title: 'Digest', overview: 'Overview', content_json: '{"items":[]}' }
+			};
+		}) };
+		const send = vi.fn().mockResolvedValue(undefined);
+		const context = {
+			env: {
+				admin: 'admin@example.com', db, ai_digest_email: { send },
+				AI_DIGEST_DESTINATION: 'verified@example.com'
+			},
+			get: () => ({ userId: 1, email: 'admin@example.com' })
+		};
+
+		expect(await aiDeliveryService.request(context, 3)).toEqual({ status: 'sent' });
+		expect(send).toHaveBeenCalledWith(expect.objectContaining({ to: 'verified@example.com' }));
+		expect(statements.some(sql => /delivery_status = 'pending'/i.test(sql))).toBe(true);
+		expect(statements.some(sql => /delivery_status = 'sent'/i.test(sql))).toBe(true);
+		systemState.mockRestore();
+	});
+
 	it('refuses to enable the database switch while the environment kill switch is off', async () => {
 		const context = {
 			env: { admin: 'admin@echoec.com', AI_MONITOR_ENABLED: 'false', db: { prepare: vi.fn() } },

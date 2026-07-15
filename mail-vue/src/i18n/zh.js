@@ -36,6 +36,8 @@ const zh = {
 	aiImportantCount: '{count} 项重要',
 	aiOpenSource: '查看源邮件',
 	aiPreviewReady: '安全预览已生成',
+	aiDeliverDigest: '发送此摘要',
+	aiDigestDelivered: '摘要已投递到已验证邮箱',
 	aiDeleteMonitorConfirm: '确定删除监控规则“{name}”吗？',
 	aiMonitoringEnabled: '已加入 AI 监控',
 	aiConfigureMonitoring: '配置 AI 监控',

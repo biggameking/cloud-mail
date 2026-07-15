@@ -114,6 +114,8 @@ const aiDigestService = {
 			actionCount: digest.action_count,
 			runStatus: digest.run_status,
 			backlogCount: digest.backlog_count,
+			deliveryStatus: digest.delivery_status,
+			deliveryAttempts: digest.delivery_attempts,
 			retained: digest.retained === 1,
 			createdAt: digest.created_at
 		};

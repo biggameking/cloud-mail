@@ -81,6 +81,7 @@
     <el-drawer v-model="detailOpen" :title="activeDigest?.title" size="min(720px, 100%)">
       <div v-if="activeDigest" class="digest-detail">
         <div class="detail-actions">
+          <el-button v-if="activeDigest.deliveryStatus !== 'sent'" size="small" type="primary" :disabled="!system.deliveryEnabled" :loading="delivering" @click="deliverDigest">{{ $t('aiDeliverDigest') }}</el-button>
           <el-button size="small" @click="toggleRetained">{{ $t(activeDigest.retained ? 'aiUnpinDigest' : 'aiRetainDigest') }}</el-button>
           <el-button size="small" type="danger" plain @click="deleteDigest">{{ $t('delete') }}</el-button>
         </div>
@@ -109,7 +110,7 @@ import {Icon} from '@iconify/vue';
 import BudgetStatus from '@/components/ai-monitor/budget-status.vue';
 import MonitorDialog from '@/components/ai-monitor/monitor-dialog.vue';
 import {aiMonitorAccounts, aiMonitorCreate, aiMonitorDelete, aiMonitorList, aiMonitorUpdate, aiSystemState, aiSystemUpdate} from '@/request/ai-monitor';
-import {aiDigestDelete, aiDigestDetail, aiDigestList, aiDigestPreview, aiDigestSetRetained, aiDigestSource, aiRunList, aiUsageToday} from '@/request/ai-digest';
+import {aiDigestDelete, aiDigestDeliver, aiDigestDetail, aiDigestList, aiDigestPreview, aiDigestSetRetained, aiDigestSource, aiRunList, aiUsageToday} from '@/request/ai-digest';
 import {useEmailStore} from '@/store/email';
 
 defineOptions({name: 'ai-digest'})
@@ -132,6 +133,7 @@ const savingSystem = ref(false)
 const previewingId = ref(0)
 const activeDigest = ref(null)
 const detailOpen = ref(false)
+const delivering = ref(false)
 const initialAccountId = computed(() => Number(route.query.accountId) || 0)
 const alerts = computed(() => {
   const values = []
@@ -211,6 +213,15 @@ async function toggleRetained() {
   await aiDigestSetRetained(activeDigest.value.digestId, retained)
   activeDigest.value.retained = retained
   await loadDigests()
+}
+async function deliverDigest() {
+  delivering.value = true
+  try {
+    await aiDigestDeliver(activeDigest.value.digestId)
+    await loadDigests()
+    activeDigest.value = await aiDigestDetail(activeDigest.value.digestId)
+    ElMessage({message: t('aiDigestDelivered'), type: 'success', plain: true})
+  } finally { delivering.value = false }
 }
 async function deleteDigest() {
   await ElMessageBox.confirm(t('aiDeleteDigestConfirm'), {confirmButtonText: t('confirm'), cancelButtonText: t('cancel'), type: 'warning'})

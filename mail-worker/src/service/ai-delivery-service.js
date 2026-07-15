@@ -1,4 +1,6 @@
 import { t } from '../i18n/i18n';
+import BizError from '../error/biz-error';
+import aiMonitorService, { assertAdminAiAccess } from './ai-monitor-service';
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, character => ({
 	'&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
@@ -21,6 +23,30 @@ const renderDigestEmail = digest => {
 };
 
 const aiDeliveryService = {
+	async request(c, digestId) {
+		assertAdminAiAccess(c);
+		const id = Number(digestId);
+		if (!Number.isInteger(id) || id <= 0) throw new BizError(t('aiInvalidDigest'), 400);
+		const system = await aiMonitorService.systemState(c, false);
+		if (!system.environmentEnabled || !system.enabled || !system.deliveryEnabled) {
+			throw new BizError(t('aiDeliveryDisabled'), 409);
+		}
+		if (!c.env.ai_digest_email || !c.env.AI_DIGEST_DESTINATION) {
+			throw new BizError(t('aiDeliveryUnavailable'), 503);
+		}
+		const digest = await c.env.db.prepare('SELECT delivery_status, delivery_attempts FROM ai_digest WHERE digest_id = ?')
+			.bind(id).first();
+		if (!digest) throw new BizError(t('aiDigestNotFound'), 404);
+		if (digest.delivery_status === 'sent') return { status: 'sent' };
+		if (digest.delivery_status === 'sending') return { status: 'sending' };
+		if (digest.delivery_attempts >= 3) throw new BizError(t('aiDeliveryAttemptsExceeded'), 409);
+		if (digest.delivery_status === 'not_requested') {
+			await c.env.db.prepare("UPDATE ai_digest SET delivery_status = 'pending' WHERE digest_id = ? AND delivery_status = 'not_requested'")
+				.bind(id).run();
+		}
+		return this.deliver(c, id);
+	},
+
 	async deliver(c, digestId) {
 		if (!c.env.ai_digest_email || !c.env.AI_DIGEST_DESTINATION) return { status: 'unconfigured' };
 		const claim = await c.env.db.prepare(`UPDATE ai_digest SET delivery_status = 'sending', delivery_attempts = delivery_attempts + 1

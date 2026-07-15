@@ -9,7 +9,8 @@ const RULES = [
 	{ method: 'POST', path: '/account/add', limit: 20, windowSeconds: 3600 },
 	{ method: 'PUT', path: '/account/setForward', limit: 20, windowSeconds: 3600 },
 	{ method: 'POST', path: '/setting/set', limit: 20, windowSeconds: 3600 },
-	{ method: 'POST', path: '/ai/digests/preview', limit: 6, windowSeconds: 3600 }
+	{ method: 'POST', path: '/ai/digests/preview', limit: 6, windowSeconds: 3600 },
+	{ method: 'POST', path: '/ai/digests/:id/deliver', pattern: /^\/ai\/digests\/\d+\/deliver$/, limit: 10, windowSeconds: 3600 }
 ];
 
 async function hashPrincipal(value) {
@@ -19,7 +20,7 @@ async function hashPrincipal(value) {
 }
 
 app.use('*', async (c, next) => {
-	const rule = RULES.find(item => item.method === c.req.method && item.path === c.req.path);
+	const rule = RULES.find(item => item.method === c.req.method && (item.path === c.req.path || item.pattern?.test(c.req.path)));
 	if (!rule) return next();
 	if (!c.env.kv) throw new BizError('Rate-limit storage is unavailable', 503);
 
