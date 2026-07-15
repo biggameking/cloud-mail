@@ -52,9 +52,10 @@
 - 历史摘要来源在每次查看时重新检查源邮件、邮箱及所属用户仍有效；失效来源不会返回。
 - 显式投递只读取 Cloudflare Secret `AI_DIGEST_DESTINATION_SECRET` 中的目标地址，请求体不能指定收件人；部署脚本还用本机忽略配置把 Send Email binding 限制到同一目标，临时配置部署后立即删除；每摘要最多 3 次尝试并受速率限制。
 - `.env.local` 已被 Git 忽略；当前跟踪文件未发现私钥、API Key 或 Token 值。
-- `pnpm audit` 因上游 npm audit 旧端点返回 HTTP 410 未能执行；GitHub Dependabot 在该仓库未启用。连续验收期间应启用可用的依赖漏洞数据源。
+- `pnpm audit` 仍因 npm 已退役的 audit 端点返回 HTTP 410；已改用 Google 官方 OSV Scanner 2.4.0。Windows AMD64 二进制 SHA-256 `0cdd113610126d5dfd5e12ad0e0b4f3e879291ff19bb43b0c52ed2f2c2df1a37` 与官方 GitHub Release 元数据一致；重新扫描 Worker 258 个包、前端 550 个包均为 `No issues found`。
 - 目标邮箱地址曾出现在已推送历史提交中；当前版本已从跟踪配置和文档移除并改用 Secret。彻底清除历史需要单独批准历史重写与强制推送。
 - 隐私收口发布后复核：Secret 名存在；生成的 Wrangler 临时文件已删除；Send Email binding 仍限制到单一脱敏目标；D1 保持 1 次成功运行、0 个重复窗口、1 次成功投递、4 个来源全部属于验收邮箱；基础邮件仍为 3 个活跃邮箱与 5 封有效邮件。
+- 可观测性发布后只读复核：生产保持 1 条活跃规则，下一次运行 `2026-07-16T00:00:00.000Z`；重复窗口 0、越权来源 0、重试耗尽投递 0；当日用量仍为 2 次、1,195 输入 Tokens、4,096 输出 Tokens、89 Neurons。7 天自动化已更新为每日检查校验失败、Provider 重试、有界错误类别、D1 增长，并在第 7 天重新执行 OSV 扫描。
 
 ## 连续 7 天记录
 
