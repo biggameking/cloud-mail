@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "id": "signal-newsroom",
+  "name": "Signal Newsroom / 信号编辑部",
+  "version": "1.0.0",
+  "status": "published",
+  "description": "A high-signal editorial system with serif-led hierarchy, warm paper surfaces, disciplined rules, and one urgent red accent.",
+  "tags": [
+    "editorial",
+    "newsroom",
+    "publication",
+    "long-form",
+    "dark-mode"
+  ],
+  "suitableFor": [
+    "news and analysis",
+    "narrative publications",
+    "editorial knowledge products"
+  ],
+  "notFor": [
+    "dense administration consoles without editorial reading surfaces",
+    "playful children's products",
+    "glassmorphism or gradient-led marketing sites"
+  ],
+  "sources": [
+    {
+      "name": "fooling",
+      "commit": "b1363ebc9d4471bb82f275105359a49bbf2df3df",
+      "surface": "public editorial pages"
+    },
+    {
+      "name": "story-fooling",
+      "commit": "4711f679ecbdd52d544ab4b7f0143c770ba5b1dc",
+      "surface": "public story and discovery pages"
+    }
+  ],
+  "excludedSourceSurfaces": [
+    "administration and login screens",
+    "data visualization palettes",
+    "generated social cards",
+    "floating comment effects and one-off campaign treatments"
+  ]
+}

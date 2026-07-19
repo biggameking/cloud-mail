@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 3,
+  "description": "Copy to hooks.local.json inside a project instance for repository-specific hooks. This file is not loaded directly.",
+  "hooks": [
+    {
+      "id": "project-specific-check",
+      "event": "before_edit",
+      "when": "A repository-specific boundary is touched.",
+      "read": [
+        {
+          "target": "devrules/always-readme.md",
+          "activation": "always",
+          "primary": true
+        }
+      ],
+      "run": [],
+      "workflows": [],
+      "ownership": "local",
+      "governs": "agent",
+      "activation": "conditional",
+      "enforcement": "advisory",
+      "decision_owner": "project",
+      "side_effects": "local"
+    }
+  ]
+}

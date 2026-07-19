@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "recordType": "developer-services-project",
+  "project": {
+    "id": "example-project",
+    "repository": "example-project",
+    "displayName": "Example Project",
+    "status": "active"
+  },
+  "serviceBindings": [
+    {
+      "bindingId": "github-repository",
+      "provider": "github",
+      "accountRef": "github:repository-owner",
+      "environment": "repository",
+      "role": "primary",
+      "status": "active",
+      "target": {
+        "kind": "github-repository",
+        "name": "repository-owner/example-project",
+        "identifiers": [
+          {
+            "kind": "repository",
+            "value": "repository-owner/example-project"
+          }
+        ]
+      },
+      "dataAuthority": {
+        "mode": "none",
+        "notes": "The configured Git remote is authoritative for shared code history."
+      },
+      "resources": [],
+      "environmentContract": [],
+      "automation": [
+        {
+          "profileRef": "github:repository-owner:gh-write",
+          "scope": "repository",
+          "defaultMode": "read-write",
+          "expectedIdentity": [
+            {
+              "kind": "login",
+              "value": "repository-owner"
+            }
+          ],
+          "status": "verified"
+        }
+      ],
+      "lastVerified": null,
+      "notes": "Before every push, verify the gh login and repository readback match this binding."
+    }
+  ],
+  "lastReviewed": null
+}

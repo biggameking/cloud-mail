@@ -1,0 +1,194 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devrules.local/schemas/developer-services-inventory.schema.json",
+  "title": "Developer Services Project Inventory",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "recordType", "project", "serviceBindings"],
+  "$defs": {
+    "identifier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "type": "string", "minLength": 1 },
+        "value": { "type": "string", "minLength": 1 },
+        "sourceRef": { "type": "string", "minLength": 1 }
+      },
+      "oneOf": [
+        { "required": ["value"], "not": { "required": ["sourceRef"] } },
+        { "required": ["sourceRef"], "not": { "required": ["value"] } }
+      ]
+    }
+  },
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "recordType": { "const": "developer-services-project" },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "repository", "displayName", "status"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._:-]*$" },
+        "repository": { "type": "string", "minLength": 1 },
+        "displayName": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["draft", "active", "blocked", "retired"] }
+      }
+    },
+    "serviceBindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "bindingId",
+          "provider",
+          "accountRef",
+          "environment",
+          "role",
+          "status",
+          "target",
+          "dataAuthority",
+          "resources",
+          "environmentContract",
+          "automation"
+        ],
+        "properties": {
+          "bindingId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._:-]*$" },
+          "provider": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "accountRef": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*:[a-z0-9][a-z0-9._-]*$"
+          },
+          "environment": { "type": "string", "minLength": 1 },
+          "role": {
+            "enum": [
+              "primary",
+              "secondary",
+              "alternative",
+              "failover",
+              "migration-source",
+              "migration-target",
+              "testing",
+              "analytics",
+              "shared"
+            ]
+          },
+          "status": { "enum": ["draft", "active", "blocked", "deprecated", "retired"] },
+          "target": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "identifiers"],
+            "properties": {
+              "kind": { "type": "string", "minLength": 1 },
+              "name": { "type": "string" },
+              "identifiers": {
+                "type": "array",
+                "items": { "$ref": "#/$defs/identifier" }
+              }
+            }
+          },
+          "selection": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["group", "mode", "selector", "dataRelationship", "switchProcedure"],
+            "properties": {
+              "group": { "type": "string", "minLength": 1 },
+              "mode": {
+                "enum": ["fixed", "build-time", "runtime-selectable", "operator-selected", "failover", "migration"]
+              },
+              "selector": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["type", "name", "value"],
+                "properties": {
+                  "type": { "type": "string", "minLength": 1 },
+                  "name": { "type": "string", "minLength": 1 },
+                  "value": { "type": "string", "minLength": 1 }
+                }
+              },
+              "default": { "type": "boolean" },
+              "dataRelationship": {
+                "enum": ["independent", "mirrored", "migrating", "shared", "read-replica", "unknown"]
+              },
+              "switchProcedure": { "type": "string", "minLength": 1 },
+              "compatibilityRequirements": {
+                "type": "array",
+                "items": { "type": "string", "minLength": 1 }
+              }
+            }
+          },
+          "dataAuthority": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["mode"],
+            "properties": {
+              "mode": {
+                "enum": ["authoritative", "authoritative-when-selected", "source", "target", "replica", "cache", "none"]
+              },
+              "migrationSource": { "type": "string" },
+              "notes": { "type": "string" }
+            }
+          },
+          "resources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["resourceRef", "type", "name", "consumers", "status"],
+              "properties": {
+                "resourceRef": { "type": "string", "minLength": 1 },
+                "type": { "type": "string", "minLength": 1 },
+                "name": { "type": "string", "minLength": 1 },
+                "id": { "type": "string" },
+                "idSourceRef": { "type": "string" },
+                "bindingName": { "type": "string" },
+                "consumers": { "type": "array", "items": { "type": "string" } },
+                "status": { "enum": ["planned", "active", "blocked", "deprecated", "retired"] }
+              }
+            }
+          },
+          "environmentContract": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["name", "classification", "sourceRef", "consumers", "required", "status"],
+              "properties": {
+                "name": { "type": "string", "minLength": 1 },
+                "classification": {
+                  "enum": ["public", "secret", "privileged-secret", "identity", "local-only", "runtime-secret", "ci-secret"]
+                },
+                "sourceRef": { "type": "string", "minLength": 1 },
+                "consumers": { "type": "array", "items": { "type": "string" } },
+                "required": { "type": "boolean" },
+                "status": { "enum": ["planned", "configured", "verified", "blocked", "retired"] }
+              }
+            }
+          },
+          "automation": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["profileRef", "scope", "defaultMode", "expectedIdentity", "status"],
+              "properties": {
+                "profileRef": { "type": "string", "minLength": 1 },
+                "scope": { "type": "string", "minLength": 1 },
+                "defaultMode": { "enum": ["read-only", "read-write"] },
+                "expectedIdentity": {
+                  "type": "array",
+                  "items": { "$ref": "#/$defs/identifier" }
+                },
+                "status": { "enum": ["planned", "configured", "verified", "blocked", "retired"] }
+              }
+            }
+          },
+          "lastVerified": { "type": ["string", "null"] },
+          "notes": { "type": "string" }
+        }
+      }
+    },
+    "lastReviewed": { "type": ["string", "null"] }
+  }
+}

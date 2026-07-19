@@ -1,0 +1,46 @@
+# devrules 托管 CI 参考模板。GitHub Actions 默认禁用；仅在用户明确批准该仓库和工作流后才可复制到 .github/workflows/design-check.yml。
+# 作用：PR / 主干推送时强制执行设计规范：
+#   1. DESIGN.md 质量校验（官方 designmd lint + devrules 增强检查）
+#   2. token 同步校验（DESIGN.md 与生成物一致、生成物未被手改）
+#   3. 硬编码扫描（design-guard 全量）
+#   4. PR 上输出 DESIGN.md 的 token 级 diff（回归可视化，进 Job Summary）
+name: design-check
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+
+jobs:
+  design:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Lint DESIGN.md (official + devrules extras)
+        run: node devrules/scripts/design-lint.mjs
+
+      - name: Check token sync (DESIGN.md -> artifacts)
+        run: node devrules/scripts/design-sync.mjs --check
+
+      - name: Guard hardcoded UI values
+        run: node devrules/scripts/design-guard.mjs
+
+      - name: Token diff vs base branch (PR only)
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          if git show "origin/${{ github.base_ref }}:DESIGN.md" > /tmp/DESIGN.base.md 2>/dev/null; then
+            echo '## DESIGN.md token diff' >> "$GITHUB_STEP_SUMMARY"
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            npx -p @google/design.md designmd diff /tmp/DESIGN.base.md DESIGN.md >> "$GITHUB_STEP_SUMMARY" || true
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'base 分支没有 DESIGN.md，跳过 diff'
+          fi

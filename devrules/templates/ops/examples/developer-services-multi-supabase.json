@@ -1,0 +1,177 @@
+{
+  "schemaVersion": 1,
+  "recordType": "developer-services-project",
+  "project": {
+    "id": "multi-database-app",
+    "repository": "multi-database-app",
+    "displayName": "Multi Database App",
+    "status": "active"
+  },
+  "serviceBindings": [
+    {
+      "bindingId": "supabase-profile-a",
+      "provider": "supabase",
+      "accountRef": "supabase:owner-free-01",
+      "environment": "production",
+      "role": "alternative",
+      "status": "active",
+      "target": {
+        "kind": "supabase-project",
+        "name": "Profile A",
+        "identifiers": [
+          {
+            "kind": "project-ref",
+            "sourceRef": ".env.local:PROFILE_A_PROJECT_REF"
+          },
+          {
+            "kind": "api-url",
+            "sourceRef": ".env.local:PROFILE_A_SUPABASE_URL"
+          }
+        ]
+      },
+      "selection": {
+        "group": "application-database",
+        "mode": "operator-selected",
+        "selector": {
+          "type": "environment-variable",
+          "name": "ACTIVE_SUPABASE_PROFILE",
+          "value": "A"
+        },
+        "default": true,
+        "dataRelationship": "independent",
+        "switchProcedure": "node scripts/apply-supabase-profile.mjs --active=A",
+        "compatibilityRequirements": [
+          "Both selectable projects must run a compatible migration level before switching.",
+          "The selected project reference and canonical API URL must match before any remote write."
+        ]
+      },
+      "dataAuthority": {
+        "mode": "authoritative-when-selected",
+        "migrationSource": "supabase/migrations",
+        "notes": "This database is authoritative only while profile A is selected."
+      },
+      "resources": [],
+      "environmentContract": [
+        {
+          "name": "PROFILE_A_PROJECT_REF",
+          "classification": "identity",
+          "sourceRef": ".env.local:PROFILE_A_PROJECT_REF",
+          "consumers": [
+            "profile-adapter",
+            "release-guard"
+          ],
+          "required": true,
+          "status": "configured"
+        },
+        {
+          "name": "PROFILE_A_SUPABASE_SECRET_KEY",
+          "classification": "privileged-secret",
+          "sourceRef": ".env.local:PROFILE_A_SUPABASE_SECRET_KEY",
+          "consumers": [
+            "profile-adapter"
+          ],
+          "required": true,
+          "status": "configured"
+        }
+      ],
+      "automation": [
+        {
+          "profileRef": "supabase:owner-free-01:mcp-readonly",
+          "scope": "project",
+          "defaultMode": "read-only",
+          "expectedIdentity": [
+            {
+              "kind": "project-ref",
+              "sourceRef": ".env.local:PROFILE_A_PROJECT_REF"
+            }
+          ],
+          "status": "planned"
+        }
+      ],
+      "lastVerified": null
+    },
+    {
+      "bindingId": "supabase-profile-b",
+      "provider": "supabase",
+      "accountRef": "supabase:owner-free-02",
+      "environment": "production",
+      "role": "alternative",
+      "status": "active",
+      "target": {
+        "kind": "supabase-project",
+        "name": "Profile B",
+        "identifiers": [
+          {
+            "kind": "project-ref",
+            "sourceRef": ".env.local:PROFILE_B_PROJECT_REF"
+          },
+          {
+            "kind": "api-url",
+            "sourceRef": ".env.local:PROFILE_B_SUPABASE_URL"
+          }
+        ]
+      },
+      "selection": {
+        "group": "application-database",
+        "mode": "operator-selected",
+        "selector": {
+          "type": "environment-variable",
+          "name": "ACTIVE_SUPABASE_PROFILE",
+          "value": "B"
+        },
+        "default": false,
+        "dataRelationship": "independent",
+        "switchProcedure": "node scripts/apply-supabase-profile.mjs --active=B",
+        "compatibilityRequirements": [
+          "Both selectable projects must run a compatible migration level before switching.",
+          "The selected project reference and canonical API URL must match before any remote write."
+        ]
+      },
+      "dataAuthority": {
+        "mode": "authoritative-when-selected",
+        "migrationSource": "supabase/migrations",
+        "notes": "This database is authoritative only while profile B is selected."
+      },
+      "resources": [],
+      "environmentContract": [
+        {
+          "name": "PROFILE_B_PROJECT_REF",
+          "classification": "identity",
+          "sourceRef": ".env.local:PROFILE_B_PROJECT_REF",
+          "consumers": [
+            "profile-adapter",
+            "release-guard"
+          ],
+          "required": true,
+          "status": "configured"
+        },
+        {
+          "name": "PROFILE_B_SUPABASE_SECRET_KEY",
+          "classification": "privileged-secret",
+          "sourceRef": ".env.local:PROFILE_B_SUPABASE_SECRET_KEY",
+          "consumers": [
+            "profile-adapter"
+          ],
+          "required": true,
+          "status": "configured"
+        }
+      ],
+      "automation": [
+        {
+          "profileRef": "supabase:owner-free-02:mcp-readonly",
+          "scope": "project",
+          "defaultMode": "read-only",
+          "expectedIdentity": [
+            {
+              "kind": "project-ref",
+              "sourceRef": ".env.local:PROFILE_B_PROJECT_REF"
+            }
+          ],
+          "status": "planned"
+        }
+      ],
+      "lastVerified": null
+    }
+  ],
+  "lastReviewed": null
+}

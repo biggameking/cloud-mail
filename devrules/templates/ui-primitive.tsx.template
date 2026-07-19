@@ -1,0 +1,63 @@
+
+// ============================================================================
+// UI 原语组件模板（React + CVA + Tailwind 语义类）
+// 用法：复制到 src/components/ui/<name>.tsx，替换 <Widget> 与 variants。
+//
+// 契约（violate 即被 design-guard / code review 拒绝）：
+//   1. 规格出处：DESIGN.md ## Components > ### <Widget>（先登记后实现）
+//   2. 只允许语义 token 类：bg-primary / text-muted-foreground / rounded-md /
+//      h-10 / px-4 / text-label-md / shadow-[var(--elevation-low)] ...
+//      禁止：bg-[#...]、text-[13px]、style={{ color: '#...' }} 等任何硬编码
+//   3. 所有交互态齐全：hover / active / focus-visible(ring) / disabled
+//   4. 对外导出 variants，业务层只组合、不重写样式
+// ============================================================================
+import * as React from 'react';
+import { Slot } from '@radix-ui/react-slot';
+import { cva, type VariantProps } from 'class-variance-authority';
+import { cn } from '@/lib/utils';
+
+const widgetVariants = cva(
+  // base：结构 + 全局 focus ring 规则（DESIGN.md Do's and Don'ts）
+  [
+    'inline-flex items-center justify-center gap-2',
+    'transition-colors duration-[var(--motion-instant)] ease-[var(--motion-easing)]',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+    'disabled:pointer-events-none',
+  ].join(' '),
+  {
+    variants: {
+      variant: {
+        // 与 DESIGN.md components.* 键一一对应；hover/active/disabled 用对应 -hover/-active token 类
+        primary:
+          'bg-primary text-primary-foreground hover:bg-primary-hover active:bg-primary-active ' +
+          'disabled:bg-muted disabled:text-muted-foreground',
+        secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary-hover',
+        ghost: 'bg-transparent text-foreground hover:bg-muted',
+        destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive-hover',
+      },
+      size: {
+        sm: 'h-8 rounded-md px-3 text-label-sm',
+        md: 'h-10 rounded-md px-4 text-label-md',
+        lg: 'h-12 rounded-md px-5 text-label-md',
+      },
+    },
+    defaultVariants: { variant: 'primary', size: 'md' },
+  },
+);
+
+export interface WidgetProps
+  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+    VariantProps<typeof widgetVariants> {
+  /** 以子元素作为渲染根（链接按钮等场景） */
+  asChild?: boolean;
+}
+
+const Widget = React.forwardRef<HTMLButtonElement, WidgetProps>(
+  ({ className, variant, size, asChild = false, ...props }, ref) => {
+    const Comp = asChild ? Slot : 'button';
+    return <Comp ref={ref} className={cn(widgetVariants({ variant, size }), className)} {...props} />;
+  },
+);
+Widget.displayName = 'Widget';
+
+export { Widget, widgetVariants };

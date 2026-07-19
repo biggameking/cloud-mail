@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "workspace": {
+    "defaultRoot": "..",
+    "additionalRoots": [],
+    "recursive": false
+  },
+  "initialization": {
+    "defaultAdoptionProfile": "minimal",
+    "syncTemplateByDefault": false,
+    "pruneGeneratedAnchorsByDefault": false,
+    "instanceOwnsLocalChanges": true,
+    "templatePromotionMode": "suggestion-only"
+  },
+  "templateSync": {
+    "moduleSelection": "manifest",
+    "modules": []
+  },
+  "agentSurfaces": {
+    "selectionOwner": "host-user",
+    "supported": [
+      "codex",
+      "claude-code",
+      "cursor",
+      "windsurf",
+      "future-agent"
+    ],
+    "singleOrchestrationRoot": "devrules/always-readme.md"
+  },
+  "entryFiles": {
+    "create": [
+      "AGENTS.md"
+    ],
+    "bindIfPresent": [
+      ".cursor/rules/devrules.mdc",
+      "CLAUDE.md",
+      ".cursorrules",
+      ".windsurfrules"
+    ]
+  },
+  "detection": {
+    "ignoreDirs": [
+      ".build",
+      ".codegraph",
+      ".codex-copilot",
+      ".gradle",
+      ".mypy_cache",
+      ".nox",
+      ".omx",
+      ".pytest_cache",
+      ".ruff_cache",
+      ".swiftpm",
+      ".tox",
+      ".venv",
+      "__pycache__",
+      "deriveddata",
+      "generated",
+      "logs",
+      "node_modules",
+      "out",
+      "pods",
+      "target",
+      "temp",
+      "tmp",
+      "vendor",
+      "venv"
+    ],
+    "sourceRoots": {
+      "include": [],
+      "exclude": []
+    },
+    "semanticModules": {
+      "maxAutomaticPerSourceRoot": 12,
+      "include": [],
+      "exclude": [],
+      "promoteCandidates": [],
+      "ignoreCandidates": []
+    }
+  },
+  "codeHealth": {
+    "mode": "advisory",
+    "fileLinesWarn": 500,
+    "fileLinesNoGrowth": 800,
+    "excludeDirs": [],
+    "excludePaths": [
+      "devrules/**"
+    ],
+    "largeFileAllowlist": []
+  },
+  "hooks": {
+    "enabled": true,
+    "disabledHookIds": [],
+    "extraHooks": []
+  },
+  "memory": {
+    "feedbackLoop": "immediate-agent-mediated",
+    "projectLocalOnly": true,
+    "compactInteractionLogAfterEntries": 20,
+    "templateEvolutionTarget": "devrules/memory/evolution-suggestions.md"
+  },
+  "developerServices": {
+    "mode": "safety-only",
+    "managedProviders": []
+  },
+  "automation": {
+    "allowProjectLocalScripts": true,
+    "githubActionsPolicy": "inherit",
+    "preferredRuntime": "node-mjs",
+    "dryRunDefault": true,
+    "mutationFlag": "--apply",
+    "supportedPlatforms": [
+      "windows",
+      "macos"
+    ]
+  },
+  "audit": {
+    "allowPlaceholderAnchors": true,
+    "requireCommands": false
+  },
+  "_notes": [
+    "Project-local devrules configuration.",
+    "Use include/exclude/promote/ignore lists to tune initialization without editing the shared script.",
+    "entryFiles.create is created when missing; entryFiles.bindIfPresent is updated only when the file already exists.",
+    "workspace.defaultRoot is used by workspace commands when --root is omitted.",
+    "workspace.additionalRoots can list other workspace parent directories on the same device; workspace sync-template also reads registered template workspaces.",
+    "templateSync.moduleSelection=manifest follows manifest.installedModules; explicit uses templateSync.modules and automatically includes declared module dependencies.",
+    "memory settings describe Agent-mediated feedback capture; project memory stays local to this repository.",
+    "automation settings describe devrules script defaults; writes still require explicit --apply.",
+    "automation.githubActionsPolicy defaults to inherit: preserve committed workflows, but require approval before Agent-created or materially changed hosted CI.",
+    "developerServices defaults to safety-only; managed-registry is an explicit project choice.",
+    "Entry-file paths are canonical repository-relative paths using forward slashes; parent traversal, version-control/devrules control data, symlink topology, and non-regular targets are rejected before writes."
+  ],
+  "_lastDetected": {
+    "sourceRoots": [
+      "mail-vue",
+      "mail-worker"
+    ],
+    "semanticModules": [],
+    "anchorCandidates": [],
+    "updatedAt": "2026-07-19"
+  }
+}

@@ -1,0 +1,167 @@
+{
+  "schemaVersion": 1,
+  "changeId": "TODO",
+  "title": "TODO",
+  "owner": "TODO",
+  "status": "draft",
+  "riskLevel": "high",
+  "platforms": [
+    "server"
+  ],
+  "impact": {
+    "persistentData": true,
+    "schemaChange": true,
+    "storageFormatChange": false,
+    "contractChange": true,
+    "destructiveData": false,
+    "securityOrPrivacy": false,
+    "billingOrEntitlements": false,
+    "crossTenant": false,
+    "clientLocalState": false,
+    "irreversibleOperation": false
+  },
+  "architecture": {
+    "relationship": "extend",
+    "boundaries": [
+      "TODO"
+    ],
+    "decision": "TODO",
+    "evidence": [
+      "TODO"
+    ]
+  },
+  "compatibility": {
+    "oldReadersOnNewData": true,
+    "newReadersOnOldData": true,
+    "mixedVersionSafe": true,
+    "unknownFieldsTolerated": true,
+    "unknownEnumFallback": "TODO",
+    "safeGateOrRefusal": "TODO",
+    "compatibilityWindow": "TODO",
+    "minimumSupportedVersion": "TODO",
+    "deprecationPlan": "TODO",
+    "evidence": [
+      "TODO"
+    ]
+  },
+  "migration": {
+    "required": true,
+    "strategy": "expand-migrate-contract",
+    "backwardCompatibleDeployment": true,
+    "sourceVersions": [
+      "TODO"
+    ],
+    "targetVersion": "TODO",
+    "steps": [
+      "TODO"
+    ],
+    "idempotent": true,
+    "resumable": true,
+    "failureAtomicity": "checkpointed-resumable",
+    "preflightChecks": [
+      "TODO"
+    ],
+    "backupProcedure": "TODO",
+    "restoreTestEvidence": "TODO",
+    "integrityChecks": [
+      "TODO"
+    ],
+    "batchingAndRateLimit": "TODO",
+    "failureHandling": "TODO",
+    "downgradeBehavior": "TODO",
+    "interruptionTestEvidence": "TODO"
+  },
+  "rollout": {
+    "strategy": "canary",
+    "featureFlagOrIsolation": "TODO",
+    "killSwitchOrStopMechanism": "TODO",
+    "owner": "TODO",
+    "stages": [
+      {
+        "name": "internal",
+        "percentage": 0,
+        "observationWindow": "TODO",
+        "successCriteria": [
+          "TODO"
+        ],
+        "stopCriteria": [
+          "TODO"
+        ]
+      },
+      {
+        "name": "first-production-cohort",
+        "percentage": 1,
+        "observationWindow": "TODO",
+        "successCriteria": [
+          "TODO"
+        ],
+        "stopCriteria": [
+          "TODO"
+        ]
+      }
+    ]
+  },
+  "rollback": {
+    "codeRollback": "TODO",
+    "dataRollbackOrRollForward": "TODO",
+    "pointOfNoReturn": "TODO",
+    "decisionOwner": "TODO",
+    "rto": "TODO",
+    "rpo": "TODO",
+    "evidence": [
+      "TODO"
+    ]
+  },
+  "observability": {
+    "technicalSignals": [
+      "TODO"
+    ],
+    "businessSignals": [
+      "TODO"
+    ],
+    "migrationAndIntegritySignals": [
+      "TODO"
+    ],
+    "alerts": [
+      "TODO"
+    ],
+    "dashboard": "TODO",
+    "auditTrail": "TODO",
+    "monitoringWindow": "TODO"
+  },
+  "verification": {
+    "upgradePaths": [
+      {
+        "from": "TODO",
+        "to": "TODO",
+        "status": "pending",
+        "evidence": "TODO"
+      }
+    ],
+    "checks": [
+      {
+        "name": "unit-integration-build-and-migration suites",
+        "status": "pending",
+        "evidence": "TODO"
+      }
+    ],
+    "dataScaleEvidence": "TODO"
+  },
+  "approvals": [
+    {
+      "role": "change owner",
+      "name": "TODO",
+      "status": "pending",
+      "evidence": "TODO"
+    }
+  ],
+  "exceptions": [],
+  "postRelease": {
+    "monitoringCompleted": false,
+    "migrationReconciled": false,
+    "cleanupTracked": false,
+    "evidence": [
+      "TODO"
+    ]
+  }
+}

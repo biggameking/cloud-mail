@@ -1,0 +1,6 @@
+#!/bin/sh
+# devrules design gate pre-commit shim, enabled via core.hooksPath by design-install-hooks.mjs.
+# The actual logic lives in ../design-pre-commit.mjs (cross-platform Node script),
+# resolved relative to this shim so both template-root and devrules/ instance layouts work.
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+exec node "$HOOK_DIR/../design-pre-commit.mjs" "$@"

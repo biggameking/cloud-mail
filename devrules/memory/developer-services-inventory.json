@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "recordType": "developer-services-project",
+  "project": {
+    "id": "domain-mail",
+    "repository": "cloud-mail",
+    "displayName": "Cloud Mail",
+    "status": "active"
+  },
+  "serviceBindings": [
+    {
+      "bindingId": "github-repository",
+      "provider": "github",
+      "accountRef": "github:biggameking",
+      "environment": "repository",
+      "role": "primary",
+      "status": "active",
+      "target": {
+        "kind": "github-repository",
+        "name": "biggameking/cloud-mail",
+        "identifiers": [
+          {
+            "kind": "repository",
+            "value": "biggameking/cloud-mail"
+          }
+        ]
+      },
+      "dataAuthority": {
+        "mode": "none",
+        "notes": "The publish remote is authoritative for user-owned shared code history; origin remains the upstream project."
+      },
+      "resources": [],
+      "environmentContract": [],
+      "automation": [
+        {
+          "profileRef": "github:biggameking:gh-write",
+          "scope": "repository",
+          "defaultMode": "read-write",
+          "expectedIdentity": [
+            {
+              "kind": "login",
+              "value": "biggameking"
+            }
+          ],
+          "status": "verified"
+        }
+      ],
+      "lastVerified": "2026-07-20",
+      "notes": "Before every push, verify the gh login and repository readback match this binding; push user-owned commits through the publish remote."
+    }
+  ],
+  "lastReviewed": "2026-07-20"
+}
