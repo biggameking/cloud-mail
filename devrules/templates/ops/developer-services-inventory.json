@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "recordType": "developer-services-project",
+  "project": {
+    "id": "example-project",
+    "repository": "example-project",
+    "displayName": "Example Project",
+    "status": "draft"
+  },
+  "serviceBindings": [],
+  "lastReviewed": null
+}

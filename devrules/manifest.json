@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "system": "devrules",
+  "devrulesVersion": "4.0.7",
+  "initializedAt": "2026-07-19T19:20:51.897Z",
+  "updatedAt": "2026-07-19T19:20:51.897Z",
+  "adoptionProfile": "minimal",
+  "selectedProfileLevel": 1,
+  "observedAdoptionLevel": 2,
+  "maturityLevel": 2,
+  "entryBindings": {
+    "agents": true,
+    "claude": false,
+    "files": [
+      {
+        "file": "AGENTS.md",
+        "required": true,
+        "exists": true,
+        "bound": true,
+        "created": false
+      },
+      {
+        "file": ".cursor/rules/devrules.mdc",
+        "required": false,
+        "exists": false,
+        "bound": false,
+        "created": false
+      },
+      {
+        "file": "CLAUDE.md",
+        "required": false,
+        "exists": false,
+        "bound": false,
+        "created": false
+      },
+      {
+        "file": ".cursorrules",
+        "required": false,
+        "exists": false,
+        "bound": false,
+        "created": false
+      },
+      {
+        "file": ".windsurfrules",
+        "required": false,
+        "exists": false,
+        "bound": false,
+        "created": false
+      }
+    ]
+  },
+  "installedModules": [
+    "core-orchestration",
+    "configuration",
+    "core-rules",
+    "workflow-management",
+    "work-system-assets",
+    "profiles",
+    "design-system",
+    "context-fractal",
+    "hooks",
+    "memory",
+    "scripts"
+  ],
+  "enabledModules": [
+    "core-orchestration"
+  ],
+  "dormantModules": [
+    "configuration",
+    "core-rules",
+    "workflow-management",
+    "work-system-assets",
+    "profiles",
+    "design-system",
+    "context-fractal",
+    "hooks",
+    "memory",
+    "scripts"
+  ],
+  "configPath": "devrules/config.json",
+  "configSchemaVersion": 1,
+  "sourceRoots": [
+    "mail-vue",
+    "mail-worker"
+  ],
+  "semanticModules": [],
+  "anchorCandidates": [],
+  "detectedStack": [],
+  "legacyImports": [],
+  "templateSyncApplied": true
+}

@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "styles": [
+    {
+      "id": "signal-newsroom",
+      "name": "Signal Newsroom / 信号编辑部",
+      "version": "1.0.0",
+      "description": "A high-signal editorial system with serif-led hierarchy, warm paper surfaces, disciplined rules, and one urgent red accent.",
+      "tags": [
+        "editorial",
+        "newsroom",
+        "publication",
+        "long-form",
+        "dark-mode"
+      ],
+      "suitableFor": [
+        "news and analysis",
+        "narrative publications",
+        "editorial knowledge products"
+      ]
+    }
+  ]
+}

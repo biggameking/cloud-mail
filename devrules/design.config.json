@@ -1,0 +1,65 @@
+{
+  "$comment": "devrules 设计子系统工具链配置。把 devrules/ 拷入项目根后，design-* 脚本按 <repo>/design.config.json -> <repo>/devrules/design.config.json 的顺序查找本文件；缺省字段自动回退到内置默认值（与本文件一致）。注意：devrules OS 自身的配置是 devrules/config.json，两者互不干涉。",
+
+  "designFile": "DESIGN.md",
+  "changelogFile": "DESIGN-CHANGELOG.md",
+
+  "output": {
+    "$comment": "design-sync 的生成物。全部是『生成物，禁止手改』，由 pre-commit 校验 hash。",
+    "cssVariables": "src/styles/design-tokens.css",
+    "tailwindFragment": "src/styles/tailwind.design.json",
+    "dtcgTokens": "src/styles/design-tokens.json",
+    "stampFile": "src/styles/.design-stamp.json"
+  },
+
+  "guard": {
+    "$comment": "design-guard 扫描范围与规则开关。severity 可为 error | warn | off。",
+    "scanDirs": ["src"],
+    "extensions": [".tsx", ".ts", ".jsx", ".js", ".css", ".html", ".vue", ".svelte"],
+    "exclude": [
+      "node_modules",
+      "dist",
+      "build",
+      ".next",
+      "coverage",
+      "src/styles/design-tokens.css",
+      "src/styles/design-tokens.json",
+      "src/styles/tailwind.design.json",
+      ".test.",
+      ".spec.",
+      ".stories."
+    ],
+    "allowlistFile": "devrules/design-guard.allow.json",
+    "rules": {
+      "no-hex-color": "error",
+      "no-color-fn-literal": "error",
+      "no-tailwind-arbitrary-color": "error",
+      "no-tailwind-arbitrary-value": "warn",
+      "no-inline-style-literal": "error",
+      "no-unregistered-font": "warn",
+      "no-magic-px-in-css": "warn",
+      "no-placeholder-copy": "error"
+    },
+    "cssPxThreshold": 4,
+    "copyBannedPatterns": [
+      "lorem ipsum", "placeholder text", "click here", "coming soon",
+      "占位文案", "占位符", "示例文本", "示例文案", "此处显示", "点击这里",
+      "强大的", "一站式", "无缝", "无缝集成", "重新定义", "开启您的", "之旅"
+    ]
+  },
+
+  "lint": {
+    "$comment": "design-lint 的本地增强检查。requiredComponents 是项目要求 DESIGN.md 必须给出规格的组件清单（组件规格完整度门禁）。",
+    "requiredComponents": [
+      "button-primary",
+      "button-secondary",
+      "button-ghost",
+      "button-destructive",
+      "input-field",
+      "card",
+      "dialog",
+      "badge"
+    ],
+    "requiredSections": ["Overview", "Colors", "Typography", "Components", "Do's and Don'ts"]
+  }
+}

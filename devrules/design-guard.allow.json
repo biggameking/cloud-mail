@@ -1,0 +1,12 @@
+{
+  "$comment": "design-guard 豁免清单。每条豁免必须写明 reason（为什么这个值不能来自 token），并写 date 便于审计工作流（design-audit.md）定期清理。file 按路径后缀匹配（用 / 分隔），match 为该行中命中的字面量子串；match 省略时豁免该文件内该规则的全部命中（仅建议在存量迁移期使用）。",
+  "entries": [
+    {
+      "rule": "no-hex-color",
+      "file": "src/components/brand/Logo.tsx",
+      "match": "#FF5A00",
+      "reason": "示例条目：品牌 Logo 固定用色，属于品牌资产而非主题色，不随主题切换。删除本条后再按需添加你自己的豁免。",
+      "date": "2026-07-04"
+    }
+  ]
+}

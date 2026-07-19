@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "templateId": "jojonax/devrules",
+  "version": "4.0.7",
+  "revision": 43,
+  "sourceRepository": "https://github.com/biggameking/devrules",
+  "gitHosting": {
+    "provider": "github",
+    "accountRef": "github:biggameking",
+    "repository": "biggameking/devrules",
+    "visibility": "private",
+    "defaultBranch": "main"
+  }
+}

@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "method": "Multi-source code evidence extraction followed by editorial reconciliation. Shared frequency established candidates; semantic role and repeated public-page use determined the final style.",
+  "mechanicalExtraction": {
+    "tool": "devrules/scripts/design-style-library.mjs extract",
+    "defaultExclusions": [
+      "devrules/",
+      "scripts/",
+      "workers/",
+      "src/pages/api/"
+    ],
+    "taskExclusions": [
+      "src/pages/admin/",
+      "src/layouts/AdminLayout.astro"
+    ],
+    "commonSignals": [
+      "serif-headlines",
+      "serif-body",
+      "sans-ui",
+      "uppercase-labels",
+      "tracked-labels",
+      "thin-dividers",
+      "editorial-grid",
+      "image-led-story",
+      "restrained-radius",
+      "restrained-shadow",
+      "accent-rule",
+      "ticker-or-breaking",
+      "dark-mode",
+      "long-form-prose"
+    ]
+  },
+  "sources": [
+    {
+      "name": "fooling",
+      "commit": "b1363ebc9d4471bb82f275105359a49bbf2df3df",
+      "evidence": [
+        "tailwind.config.ts",
+        "src/index.css",
+        "src/layouts/BaseLayout.astro",
+        "src/pages/index.astro",
+        "src/pages/article/[slug].astro"
+      ],
+      "observations": [
+        "Playfair Display headlines, Source Serif 4 reading text, and Inter utility text have explicit roles.",
+        "A twelve-column image-led lead story, compact side rail, four-column story grids, and max-width reading column form the editorial hierarchy.",
+        "Deep navy signal surfaces, warm near-white content surfaces, red category emphasis, thin rules, and a 6px base radius create urgency without visual noise."
+      ]
+    },
+    {
+      "name": "story-fooling",
+      "commit": "4711f679ecbdd52d544ab4b7f0143c770ba5b1dc",
+      "evidence": [
+        "tailwind.config.ts",
+        "src/styles/global.css",
+        "src/layouts/BaseLayout.astro",
+        "src/pages/index.astro",
+        "src/pages/story/[slug].astro",
+        "src/components/story/StoryCard.astro"
+      ],
+      "observations": [
+        "The same three-family typography split is declared in both Tailwind and the loaded web fonts.",
+        "Warm paper surfaces, near-black ink, red editorial accents, 65ch prose, section rules, drop caps, and restrained hover lift support long-form reading.",
+        "Ticker and discovery surfaces use sans-serif uppercase labels while narrative titles and body copy retain serif hierarchy."
+      ]
+    }
+  ],
+  "sharedDecisions": [
+    {
+      "decision": "Use Playfair Display for story identity, Source Serif 4 for sustained reading, and Inter only for navigation, metadata, labels, and controls.",
+      "reason": "This role split is explicit in both repositories and visible across their public layouts."
+    },
+    {
+      "decision": "Treat red as an editorial signal, not a general decoration or second background system.",
+      "reason": "Both sources reserve red for categories, active states, live or breaking signals, and concise calls to action."
+    },
+    {
+      "decision": "Build hierarchy with typography, image scale, grid span, and thin rules before cards, shadows, or decorative containers.",
+      "reason": "Both public experiences are publication-like and remain scannable without dashboard-style card chrome."
+    },
+    {
+      "decision": "Keep corners small and elevation exceptional.",
+      "reason": "Source components use modest rounding; shadows appear mainly on image overlays, hover emphasis, or overlays rather than every content block."
+    }
+  ],
+  "reconciledDivergences": [
+    {
+      "difference": "Fooling uses a deeper navy semantic system; Story Fooling uses a warmer paper-and-ink system.",
+      "resolution": "Warm paper is the default reading surface; deep navy is retained for ticker, masthead, hero, and other high-signal bands."
+    },
+    {
+      "difference": "Story Fooling contains a dense, system-sans administration UI and specialized graph palettes.",
+      "resolution": "Excluded because it belongs to an operational product surface, not the shared public editorial language."
+    }
+  ]
+}

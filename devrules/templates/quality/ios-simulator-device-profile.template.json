@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "projectId": "replace-with-stable-project-id",
+  "simulator": {
+    "steadyState": "one-persistent-device",
+    "deviceSelector": {
+      "name": "replace-with-project-device-name",
+      "runtime": "replace-with-ios-runtime"
+    },
+    "manualAcceptance": {
+      "scheme": "replace-with-manual-scheme",
+      "bundleId": "com.example.product.manual",
+      "preserveAppData": true
+    },
+    "automation": {
+      "scheme": "replace-with-automation-scheme",
+      "appBundleId": "com.example.product.automation",
+      "destination": "same-device",
+      "mutationScope": "app-container-only",
+      "parallelUiWorkers": 1,
+      "runnerBundleIds": [
+        "com.example.product.automation-uitests.runner"
+      ]
+    },
+    "bundleAllowlist": [
+      {
+        "bundleId": "com.example.product.manual",
+        "role": "manual-app"
+      },
+      {
+        "bundleId": "com.example.product.automation",
+        "role": "automation-app"
+      },
+      {
+        "bundleId": "com.example.product.automation-uitests.runner",
+        "role": "ui-test-runner"
+      }
+    ],
+    "disposableDeviceRequiredFor": [
+      "clean-device-state",
+      "destructive-device-state",
+      "identity-sensitive",
+      "parallel-ui-worker"
+    ]
+  }
+}

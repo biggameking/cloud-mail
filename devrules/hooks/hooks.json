@@ -1,0 +1,2738 @@
+{
+  "schemaVersion": 3,
+  "description": "Template-owned v3 Agent routes. Targets and activation conditions are structured; project-local legacy strings are parsed conservatively and never auto-select conditional prose.",
+  "lastUpdated": "2026-07-19",
+  "hooks": [
+    {
+      "id": "session-start",
+      "event": "session_start",
+      "when": "A new Agent session starts in this repository.",
+      "read": [
+        {
+          "target": "devrules/always-readme.md",
+          "activation": "always",
+          "primary": true
+        },
+        {
+          "target": "devrules/memory/project-profile.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.session-start.project-profile",
+            "equals": true
+          },
+          "note": "devrules/memory/project-profile.md when project shape or commands are not already known"
+        },
+        {
+          "target": "devrules/scripts/runtime-location.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.session-start.runtime-location",
+            "equals": true
+          },
+          "note": "devrules/scripts/runtime-location.md when this is the shared template workspace"
+        },
+        {
+          "target": "devrules/registry/README.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.session-start.readme",
+            "equals": true
+          },
+          "note": "devrules/registry/README.md when this is the shared template workspace"
+        }
+      ],
+      "run": [
+        "devrules template status when this is the shared template workspace before template writes or synchronization",
+        "before the first local write in a GitHub-backed repository, fetch and prove a clean attached branch with configured upstream and ahead=0/behind=0; unresolved dirty/diverged/unverified state blocks edits",
+        "devrules idle agent-status --json on Windows or macOS; SessionStart is read-only unless the user or device-local runtime explicitly enables scheduler auto-repair"
+      ],
+      "workflows": [],
+      "ownership": "shared",
+      "governs": "agent",
+      "activation": "always",
+      "enforcement": "hard",
+      "decision_owner": "devrules",
+      "side_effects": "none"
+    },
+    {
+      "id": "idle-resource-maintenance",
+      "event": "idle_resource_or_session_hygiene",
+      "when": "Simulator boot or memory pressure, idle Simulator.app/processes, stale Xcode DerivedData, CoreSimulator caches, stale Rust target/ or SwiftPM .build directories, long-unused Apple/Rust/Swift/Gradle build caches, an active toolchain that requires cleanup deferral, or a missing, stale, unloaded, or unregistered device maintenance scheduler.",
+      "promptPatterns": [
+        "清理.*(模拟器|DerivedData|target|\\.build|编译产物)|((模拟器|DerivedData|target|\\.build).*(清理|闲置))",
+        "idle resource|free (disk|memory)|too many simulators|模拟器太多|占内存"
+      ],
+      "pathPatterns": [
+        "**/DerivedData/**",
+        "**/CoreSimulator/Caches/**",
+        "**/target/**",
+        "**/.build/**",
+        "**/Cargo.toml",
+        "**/Package.swift"
+      ],
+      "commandPatterns": [
+        "simctl",
+        "idle-resource-maintenance"
+      ],
+      "read": [
+        {
+          "target": "devrules/workflows/idle-resource-maintenance.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/rules/ios-simulator-ownership.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.idle-resource-maintenance.ios-simulator-ownership",
+            "equals": true
+          },
+          "note": "devrules/rules/ios-simulator-ownership.md when Simulator devices are in scope"
+        },
+        {
+          "target": "devrules/rules/script-governance.md",
+          "activation": "always"
+        }
+      ],
+      "run": [
+        "devrules idle agent-status",
+        "devrules idle pressure",
+        "devrules idle status",
+        "devrules idle plan",
+        "defer the matching artifact lane while Cargo/Rust, Xcode/Swift, or Gradle is active; never terminate the build from the global age heuristic; retry after it finishes",
+        "devrules idle install-agent --apply only for an explicit manual repair or an explicitly enabled device-local auto-repair policy",
+        "devrules idle apply --apply when the plan is non-empty and safe"
+      ],
+      "workflows": [
+        {
+          "target": "idle-resource-maintenance.md",
+          "activation": "always",
+          "primary": true
+        },
+        {
+          "target": "ios-simulator-handoff.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.idle-resource-maintenance.ios-simulator-handoff",
+            "equals": true
+          },
+          "note": "ios-simulator-handoff.md when a needed Simulator must remain owned and visible"
+        }
+      ],
+      "ownership": "seed",
+      "governs": "device",
+      "activation": "explicit",
+      "enforcement": "advisory",
+      "decision_owner": "project",
+      "side_effects": "local"
+    },
+    {
+      "id": "multi-device-registry-handoff",
+      "event": "synced_template_on_device",
+      "when": "The shared devrules template is opened on a different device after a Git fetch/clone handoff.",
+      "promptPatterns": [
+        "multi-?device",
+        "hand ?off",
+        "换设备|换机|多设备",
+        "another (device|machine)"
+      ],
+      "read": [
+        {
+          "target": "devrules/registry/README.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/scripts/runtime-location.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/workflows/multi-device-registry-handoff.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/rules/script-governance.md",
+          "activation": "always"
+        }
+      ],
+      "run": [
+        "devrules location audit",
+        "devrules template status",
+        "devrules workspace git-status --root <workspace>",
+        "devrules registry inspect --root <workspace> --json",
+        "devrules registry refresh --root <workspace>",
+        "devrules workspace sync-template --registered",
+        "devrules evolution collect --root <workspace>",
+        "devrules batch readiness --root <workspace>"
+      ],
+      "workflows": [
+        {
+          "target": "multi-device-registry-handoff.md",
+          "activation": "always",
+          "primary": true
+        }
+      ],
+      "ownership": "shared",
+      "governs": "device",
+      "activation": "conditional",
+      "enforcement": "advisory",
+      "decision_owner": "project",
+      "side_effects": "local"
+    },
+    {
+      "id": "template-auto-update",
+      "event": "template_release_update_or_device_scheduler",
+      "when": "A user enables, runs, audits, or repairs autonomous devrules release updates or asks whether projects converge to the latest shared template without manual propagation.",
+      "promptPatterns": [
+        "devrules.*(auto.?update|autonomous|scheduler|自动更新|自主更新|调度器)",
+        "(template|模板).*(latest|converge|update|最新|收敛|同步).*(project|项目)",
+        "(project|项目).*(template|模板).*(latest|update|最新|更新)"
+      ],
+      "commandPatterns": [
+        "devrules template auto-update"
+      ],
+      "read": [
+        {
+          "target": "devrules/workflows/template-auto-update.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/workflows/git-multi-device-sync.md",
+          "activation": "always"
+        }
+      ],
+      "run": [
+        "devrules template auto-update status --json",
+        "devrules template auto-update agent-status --json",
+        "devrules template auto-update run --dry-run --json",
+        "devrules template auto-update ensure-agent --apply only after explicit device-local opt-in"
+      ],
+      "workflows": [
+        {
+          "target": "template-auto-update.md",
+          "activation": "always",
+          "primary": true
+        }
+      ],
+      "ownership": "shared",
+      "governs": "release",
+      "activation": "explicit",
+      "enforcement": "gate",
+      "decision_owner": "user",
+      "side_effects": "external"
+    },
+    {
+      "id": "git-multi-device-sync",
+      "event": "git_pre_edit_publish_or_device_handoff",
+      "when": "Before the first local write in a GitHub-backed repository; before final Git commit/push publication; or when a repository is opened on another device, handed off, or found ahead, behind, dirty, detached, or diverged.",
+      "promptPatterns": [
+        "\\b(ahead|behind|diverged|detached)\\b",
+        "git.*(sync|handoff|另一台|多设备)",
+        "多设备.*(git|同步)",
+        "(commit|push|提交|推送).*(github|git|仓库|主干|分支)",
+        "(github|git|仓库|主干|分支).*(commit|push|提交|推送)"
+      ],
+      "commandPatterns": [
+        "git (commit|pull|push|fetch|rebase|merge)",
+        "gh repo (create|edit)"
+      ],
+      "read": [
+        {
+          "target": "devrules/workflows/git-multi-device-sync.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/rules/developer-service-registry-governance.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.git-multi-device-sync.developer-service-registry-governance",
+            "equals": true
+          },
+          "note": "devrules/rules/developer-service-registry-governance.md when the remote is GitHub"
+        },
+        {
+          "target": "devrules/workflows/multi-device-registry-handoff.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.git-multi-device-sync.multi-device-registry-handoff",
+            "equals": true
+          },
+          "note": "devrules/workflows/multi-device-registry-handoff.md when this is the shared template"
+        }
+      ],
+      "run": [
+        "devrules repo preflight --repo <repo> --fetch --expect-sha <handoff-sha> before editing; without a handoff SHA, independently prove clean attached local/upstream equality after fetch",
+        "devrules repo publish-readiness --repo <repo> --fetch --verify-host before final commit/push; classify intentional unfinished branches with --wip-branches",
+        "devrules repo handoff --repo <repo> --fetch after committing and pushing"
+      ],
+      "workflows": [
+        {
+          "target": "git-multi-device-sync.md",
+          "activation": "always",
+          "primary": true
+        }
+      ],
+      "ownership": "shared",
+      "governs": "device",
+      "activation": "conditional",
+      "enforcement": "advisory",
+      "decision_owner": "project",
+      "side_effects": "local"
+    },
+    {
+      "id": "before-edit-route",
+      "event": "before_edit",
+      "when": "Before non-trivial code or documentation edits.",
+      "promptPatterns": [
+        "\\b(add|build|change|create|debug|develop|fix|implement|migrate|modify|optimi[sz]e|refactor|remove|rename|repair|test|update)\\b",
+        "代码|编码|开发|实现|新增|修改|修复|重构|优化|测试|迁移|删除"
+      ],
+      "read": [
+        {
+          "target": "nearest README anchor",
+          "activation": "explicit",
+          "condition": {
+            "fact": "route.before-edit-route.nearest-readme-anchor",
+            "equals": true
+          }
+        },
+        {
+          "target": "devrules/workflows/code-change.md",
+          "activation": "always"
+        },
+        {
+          "target": "matching devrules/profiles/*.md language profile only when repository guidance is insufficient",
+          "activation": "explicit",
+          "condition": {
+            "fact": "route.before-edit-route.context-3",
+            "equals": true
+          }
+        },
+        {
+          "target": "devrules/rules/architecture-governance.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.before-edit-route.architecture-governance",
+            "equals": true
+          },
+          "note": "devrules/rules/architecture-governance.md only for medium+ or cross-boundary changes"
+        }
+      ],
+      "run": [],
+      "workflows": [
+        {
+          "target": "code-change.md",
+          "activation": "always",
+          "primary": true
+        },
+        {
+          "target": "architecture-change-review.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.before-edit-route.architecture-change-review",
+            "equals": true
+          },
+          "note": "architecture-change-review.md when adding a medium+ feature, broad behavior, shared capability, or cross-boundary change"
+        },
+        {
+          "target": "documentation-update.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.before-edit-route.documentation-update",
+            "equals": true
+          },
+          "note": "documentation-update.md when structure/interfaces change"
+        }
+      ],
+      "ownership": "shared",
+      "governs": "agent",
+      "activation": "conditional",
+      "enforcement": "advisory",
+      "decision_owner": "project",
+      "side_effects": "local"
+    },
+    {
+      "id": "code-health-change",
+      "event": "after_code_change",
+      "when": "Production code, tests, scripts, build logic, or executable configuration changed.",
+      "pathPatterns": [
+        "**/*.{ts,tsx,js,jsx,mjs,cjs,py,rs,go,swift,kt,java,c,cc,cpp,h,hpp,m,mm,rb,php,sh,gd,sql}"
+      ],
+      "read": [
+        {
+          "target": "devrules/workflows/code-change.md",
+          "activation": "always"
+        }
+      ],
+      "run": [
+        "node devrules/scripts/verification-plan.mjs --repo <repo>",
+        "node devrules/scripts/code-health.mjs audit --repo <repo>",
+        "only the repository-native checks selected by the verification tier"
+      ],
+      "workflows": [
+        {
+          "target": "code-change.md",
+          "activation": "always",
+          "primary": true
+        },
+        {
+          "target": "debug-root-cause.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.code-health-change.debug-root-cause",
+            "equals": true
+          },
+          "note": "debug-root-cause.md when a check fails"
+        }
+      ],
+      "ownership": "shared",
+      "governs": "agent",
+      "activation": "conditional",
+      "enforcement": "advisory",
+      "decision_owner": "project",
+      "side_effects": "local"
+    },
+    {
+      "id": "product-architecture-gate",
+      "event": "user_facing_product_input",
+      "when": "A PRD, product brief, requirements document, research package, or redesign defines or materially changes user-facing capabilities, product domains, primary navigation, broad journeys, ownership, or visible states.",
+      "promptPatterns": [
+        "\\bPRD\\b",
+        "product (brief|requirements?)",
+        "需求文档|产品需求|产品定义|产品架构",
+        "redesign|重新设计"
+      ],
+      "read": [
+        {
+          "target": "devrules/workflows/product-architecture-review.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/templates/product-architecture-brief.md",
+          "activation": "always"
+        },
+        {
+          "target": "DESIGN.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.product-architecture-gate.design",
+            "equals": true
+          },
+          "note": "current PRD, product/IA baseline, production behavior, DESIGN.md, and acceptance evidence when present"
+        },
+        {
+          "target": "devrules/memory/project-profile.md",
+          "activation": "always"
+        },
+        {
+          "target": "nearest README anchors",
+          "activation": "explicit",
+          "condition": {
+            "fact": "route.product-architecture-gate.nearest-readme-anchors",
+            "equals": true
+          }
+        }
+      ],
+      "run": [],
+      "workflows": [
+        {
+          "target": "product-architecture-review.md",
+          "activation": "always",
+          "primary": true
+        },
+        {
+          "target": "design-read.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.product-architecture-gate.design-read",
+            "equals": true
+          },
+          "note": "design-read.md after a passing product-readiness verdict when UI is in scope"
+        },
+        {
+          "target": "architecture-change-review.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.product-architecture-gate.architecture-change-review",
+            "equals": true
+          },
+          "note": "architecture-change-review.md after a passing product-readiness verdict when technical implementation is in scope"
+        }
+      ],
+      "ownership": "shared",
+      "governs": "product",
+      "activation": "conditional",
+      "enforcement": "advisory",
+      "decision_owner": "project",
+      "side_effects": "local"
+    },
+    {
+      "id": "architecture-change-review",
+      "event": "feature_request_or_cross_boundary_change",
+      "when": "A user requests a medium+ feature, broad behavior change, shared capability, or implementation spanning multiple modules.",
+      "promptPatterns": [
+        "architecture|架构",
+        "cross-?(module|boundary)",
+        "(new|major|broad) (feature|capability)",
+        "新功能|大功能|共享能力"
+      ],
+      "read": [
+        {
+          "target": "devrules/rules/architecture-governance.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/workflows/product-architecture-review.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.architecture-change-review.product-architecture-review",
+            "equals": true
+          },
+          "note": "devrules/workflows/product-architecture-review.md when user-facing product inputs define capabilities, domains, navigation, broad journeys, ownership, or visible states"
+        },
+        {
+          "target": "devrules/templates/product-architecture-brief.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.architecture-change-review.product-architecture-brief",
+            "equals": true
+          },
+          "note": "devrules/templates/product-architecture-brief.md when the product-architecture gate applies"
+        },
+        {
+          "target": "devrules/workflows/architecture-change-review.md",
+          "activation": "always"
+        },
+        {
+          "target": "nearest README anchor",
+          "activation": "explicit",
+          "condition": {
+            "fact": "route.architecture-change-review.nearest-readme-anchor",
+            "equals": true
+          }
+        },
+        {
+          "target": "devrules/memory/project-profile.md",
+          "activation": "always"
+        }
+      ],
+      "run": [],
+      "workflows": [
+        {
+          "target": "product-architecture-review.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.architecture-change-review.product-architecture-review",
+            "equals": true
+          },
+          "note": "product-architecture-review.md before architecture-change-review.md when its applicability is required"
+        },
+        {
+          "target": "architecture-change-review.md",
+          "activation": "always",
+          "primary": true
+        }
+      ],
+      "ownership": "shared",
+      "governs": "agent",
+      "activation": "conditional",
+      "enforcement": "advisory",
+      "decision_owner": "project",
+      "side_effects": "local"
+    },
+    {
+      "id": "ios-account-data-model-gate",
+      "event": "ios_account_data_model_decision",
+      "when": "Substantive iOS/iPadOS development begins while the account/data decision is missing or stale, or persistence, iCloud/CloudKit, Sign in with Apple/Google, email login, data ownership, primary keys, collaboration, account recovery, or account migration is introduced or materially changed. Purely visual, copy-only, or mechanical UI work with no account/data boundary may defer the initial artifact.",
+      "promptPatterns": [
+        "CloudKit|iCloud",
+        "Sign in with (Apple|Google)",
+        "SwiftData|Core ?Data",
+        "(account|login|登录|账号|账户).*(ios|iphone|ipad|app)|((ios|iphone|ipad|app).*(account|login|登录|账号|账户))",
+        "数据归属|data ownership"
+      ],
+      "pathPatterns": [
+        "**/*.xcdatamodeld/**",
+        "**/Persistence*.swift",
+        "**/*.entitlements"
+      ],
+      "read": [
+        {
+          "target": "devrules/rules/ios-account-data-model.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/workflows/ios-account-data-architecture.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/templates/ios-account-data-decision.md",
+          "activation": "always"
+        },
+        {
+          "target": "project-local approved iOS account/data decision artifact when present, using the single-app path or applicable app-id path",
+          "activation": "explicit",
+          "condition": {
+            "fact": "route.ios-account-data-model-gate.data-decision-artifact-when-present-using-the-single-app-path-or-applicable-app-id-path",
+            "equals": true
+          }
+        },
+        {
+          "target": "devrules/templates/sync/local-first-sync.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ios-account-data-model-gate.local-first-sync",
+            "equals": true
+          },
+          "note": "devrules/templates/sync/local-first-sync.md when local-first or iCloud sync is selected"
+        },
+        {
+          "target": "devrules/templates/auth/auth-session.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ios-account-data-model-gate.auth-session",
+            "equals": true
+          },
+          "note": "devrules/templates/auth/auth-session.md when any Apple, Google, email, or other app login/authentication is in scope"
+        },
+        {
+          "target": "devrules/workflows/product-architecture-review.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ios-account-data-model-gate.product-architecture-review",
+            "equals": true
+          },
+          "note": "devrules/workflows/product-architecture-review.md when starting a new app or changing broad product ownership"
+        },
+        {
+          "target": "devrules/workflows/production-change.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ios-account-data-model-gate.production-change",
+            "equals": true
+          },
+          "note": "devrules/workflows/production-change.md when a released app changes identity lane or persistent ownership"
+        },
+        {
+          "target": "devrules/workflows/apple-app-store-launch.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ios-account-data-model-gate.apple-app-store-launch",
+            "equals": true
+          },
+          "note": "devrules/workflows/apple-app-store-launch.md when mainland China availability or filing assumptions are in scope"
+        },
+        {
+          "target": "devrules/memory/project-profile.md",
+          "activation": "always"
+        }
+      ],
+      "run": [],
+      "workflows": [
+        {
+          "target": "ios-account-data-architecture.md",
+          "activation": "always",
+          "primary": true
+        },
+        {
+          "target": "product-architecture-review.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ios-account-data-model-gate.product-architecture-review",
+            "equals": true
+          },
+          "note": "product-architecture-review.md when starting a new app or changing broad product ownership"
+        },
+        {
+          "target": "architecture-change-review.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ios-account-data-model-gate.architecture-change-review",
+            "equals": true
+          },
+          "note": "architecture-change-review.md when an existing implementation boundary changes"
+        },
+        {
+          "target": "production-change.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ios-account-data-model-gate.production-change",
+            "equals": true
+          },
+          "note": "production-change.md when a released app changes identity lane or persistent ownership"
+        },
+        {
+          "target": "apple-app-store-launch.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ios-account-data-model-gate.apple-app-store-launch",
+            "equals": true
+          },
+          "note": "apple-app-store-launch.md when mainland China availability or filing assumptions are in scope"
+        }
+      ],
+      "ownership": "shared",
+      "governs": "product",
+      "activation": "conditional",
+      "enforcement": "advisory",
+      "decision_owner": "project",
+      "side_effects": "local"
+    },
+    {
+      "id": "game-development",
+      "event": "game_development_work",
+      "when": "A task plans, implements, reviews, tests, tunes, profiles, packages, or releases a game; or the repository contains a Godot project.godot file.",
+      "promptPatterns": [
+        "\\bgame\\b|游戏|Godot|gameplay|playtest"
+      ],
+      "pathPatterns": [
+        "**/project.godot",
+        "**/*.gd",
+        "**/*.tscn",
+        "**/*.tres"
+      ],
+      "read": [
+        {
+          "target": "devrules/rules/game-development.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/templates/game/README.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/memory/project-profile.md",
+          "activation": "always"
+        },
+        {
+          "target": "nearest README anchor",
+          "activation": "explicit",
+          "condition": {
+            "fact": "route.game-development.nearest-readme-anchor",
+            "equals": true
+          }
+        }
+      ],
+      "run": [],
+      "workflows": [
+        {
+          "target": "game-source-of-truth.md",
+          "activation": "always",
+          "primary": true
+        },
+        {
+          "target": "game-preproduction.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.game-development.game-preproduction",
+            "equals": true
+          },
+          "note": "game-preproduction.md when defining vision, scope, pillars, prototype goals, or a vertical slice"
+        },
+        {
+          "target": "game-design-change.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.game-development.game-design-change",
+            "equals": true
+          },
+          "note": "game-design-change.md when changing gameplay rules, player experience, progression, or system behavior"
+        },
+        {
+          "target": "godot-module-architecture.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.game-development.godot-module-architecture",
+            "equals": true
+          },
+          "note": "godot-module-architecture.md when changing Godot scenes, nodes, resources, autoloads, signals, or module boundaries"
+        },
+        {
+          "target": "game-asset-integration.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.game-development.game-asset-integration",
+            "equals": true
+          },
+          "note": "game-asset-integration.md when importing or integrating art, audio, animation, levels, or other content"
+        },
+        {
+          "target": "game-prototype-playtest.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.game-development.game-prototype-playtest",
+            "equals": true
+          },
+          "note": "game-prototype-playtest.md when building a prototype or planning, running, and evaluating a playtest"
+        },
+        {
+          "target": "game-data-balance.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.game-development.game-data-balance",
+            "equals": true
+          },
+          "note": "game-data-balance.md when tuning data-driven balance or progression values"
+        },
+        {
+          "target": "game-save-compatibility.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.game-development.game-save-compatibility",
+            "equals": true
+          },
+          "note": "game-save-compatibility.md when save data, persistence, checkpoints, or schema compatibility changes"
+        },
+        {
+          "target": "game-performance-profiling.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.game-development.game-performance-profiling",
+            "equals": true
+          },
+          "note": "game-performance-profiling.md when frame time, loading, memory, rendering, physics, or runtime budgets are in scope"
+        },
+        {
+          "target": "game-qa-regression.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.game-development.game-qa-regression",
+            "equals": true
+          },
+          "note": "game-qa-regression.md when verifying gameplay behavior or preventing regressions"
+        },
+        {
+          "target": "godot-export-release.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.game-development.godot-export-release",
+            "equals": true
+          },
+          "note": "godot-export-release.md when export presets, packaging, platform builds, or game release readiness are in scope"
+        },
+        {
+          "target": "game-retrospective.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.game-development.game-retrospective",
+            "equals": true
+          },
+          "note": "game-retrospective.md when closing an iteration or distilling reusable game-development lessons"
+        }
+      ],
+      "ownership": "seed",
+      "governs": "product",
+      "activation": "conditional",
+      "enforcement": "advisory",
+      "decision_owner": "project",
+      "side_effects": "local"
+    },
+    {
+      "id": "ios-build-error-triage",
+      "event": "ios_build_or_canvas_build_failure",
+      "when": "An iOS, iPadOS, Catalyst, simulator, Xcode Canvas, package resolution, dependency scanning, module resolution, SDK, or signing build failure appears.",
+      "promptPatterns": [
+        "(build|编译|构建).*(fail|error|失败|报错)",
+        "xcodebuild.*(fail|error)",
+        "SwiftPM|package resolution|dependency scanning",
+        "signing.*(fail|error)"
+      ],
+      "commandPatterns": [
+        "xcodebuild"
+      ],
+      "read": [
+        {
+          "target": "devrules/workflows/ios-build-error-triage.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/workflows/debug-root-cause.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ios-build-error-triage.debug-root-cause",
+            "equals": true
+          },
+          "note": "devrules/workflows/debug-root-cause.md after the primary triage workflow when broader root-cause analysis is needed"
+        },
+        {
+          "target": "devrules/workflows/ios-live-preview-ui-iteration.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ios-build-error-triage.ios-live-preview-ui-iteration",
+            "equals": true
+          },
+          "note": "devrules/workflows/ios-live-preview-ui-iteration.md when Canvas or live-preview behavior is involved"
+        },
+        {
+          "target": "devrules/workflows/macos-credential-prompts.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ios-build-error-triage.macos-credential-prompts",
+            "equals": true
+          },
+          "note": "devrules/workflows/macos-credential-prompts.md when signing, Keychain, password, or Apple credential prompts are involved"
+        },
+        {
+          "target": "nearest README anchors for the app target, package manifest, lockfile, and build scripts",
+          "activation": "explicit",
+          "condition": {
+            "fact": "route.ios-build-error-triage.nearest-readme-anchors-for-the-app-target-package-manifest-lockfile-and-build-scripts",
+            "equals": true
+          }
+        }
+      ],
+      "run": [],
+      "workflows": [
+        {
+          "target": "ios-build-error-triage.md",
+          "activation": "always",
+          "primary": true
+        },
+        {
+          "target": "debug-root-cause.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ios-build-error-triage.debug-root-cause",
+            "equals": true
+          },
+          "note": "debug-root-cause.md after ios-build-error-triage.md when broader root-cause analysis is needed"
+        },
+        {
+          "target": "ios-live-preview-ui-iteration.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ios-build-error-triage.ios-live-preview-ui-iteration",
+            "equals": true
+          },
+          "note": "ios-live-preview-ui-iteration.md when Canvas or live-preview behavior is involved"
+        },
+        {
+          "target": "macos-credential-prompts.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ios-build-error-triage.macos-credential-prompts",
+            "equals": true
+          },
+          "note": "macos-credential-prompts.md when signing or credential prompts are involved"
+        }
+      ],
+      "ownership": "shared",
+      "governs": "agent",
+      "activation": "conditional",
+      "enforcement": "advisory",
+      "decision_owner": "project",
+      "side_effects": "local"
+    },
+    {
+      "id": "ios-xcode-verification",
+      "event": "ios_xcode_local_verification",
+      "when": "An iOS/Xcode task needs local build or test evidence on a Simulator.",
+      "promptPatterns": [
+        "xcodebuild|XCTest|UI ?test",
+        "(ios|iphone|ipad|swift).*(test|build|测试|构建|编译)"
+      ],
+      "pathPatterns": [
+        "**/*.xcodeproj/**",
+        "**/*.xcworkspace/**",
+        "**/*.{swift,m,mm,metal}"
+      ],
+      "commandPatterns": [
+        "xcodebuild (test|build-for-testing|test-without-building)"
+      ],
+      "read": [
+        {
+          "target": "devrules/workflows/ios-xcode-verification.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/rules/ios-simulator-ownership.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ios-xcode-verification.ios-simulator-ownership",
+            "equals": true
+          },
+          "note": "devrules/rules/ios-simulator-ownership.md when a Simulator is used"
+        }
+      ],
+      "run": [
+        "node devrules/scripts/ios-simulator-profile.mjs --profile devrules/memory/ios-simulator-device-profile.json before persistent Simulator mutation",
+        "node devrules/scripts/xcode-verification-plan.mjs with explicit container, scheme, UDID, DerivedData, tier, and focused test targets",
+        "one build-for-testing followed by reusable test-without-building batches"
+      ],
+      "workflows": [
+        {
+          "target": "ios-xcode-verification.md",
+          "activation": "always",
+          "primary": true
+        },
+        {
+          "target": "ios-simulator-handoff.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ios-xcode-verification.ios-simulator-handoff",
+            "equals": true
+          },
+          "note": "ios-simulator-handoff.md when UI tests or visible Simulator control are required"
+        }
+      ],
+      "ownership": "shared",
+      "governs": "agent",
+      "activation": "conditional",
+      "enforcement": "advisory",
+      "decision_owner": "project",
+      "side_effects": "local"
+    },
+    {
+      "id": "failure-root-cause",
+      "event": "on_failure",
+      "when": "A test, build, lint, browser check, runtime path, or repeated attempt fails.",
+      "promptPatterns": [
+        "\\b(fail(s|ed|ing)?|error|bug|crash|exception|broken)\\b",
+        "报错|失败|崩溃|异常|坏了|不工作|无法"
+      ],
+      "read": [
+        {
+          "target": "devrules/workflows/debug-root-cause.md",
+          "activation": "always"
+        }
+      ],
+      "run": [],
+      "workflows": [
+        {
+          "target": "debug-root-cause.md",
+          "activation": "always",
+          "primary": true
+        }
+      ],
+      "ownership": "shared",
+      "governs": "agent",
+      "activation": "conditional",
+      "enforcement": "advisory",
+      "decision_owner": "project",
+      "side_effects": "local"
+    },
+    {
+      "id": "terminal-popup-diagnostics",
+      "event": "terminal_popup_or_visible_console",
+      "when": "The user reports flashing terminal windows, visible cmd.exe/PowerShell windows, or dev-server console popup flicker.",
+      "promptPatterns": [
+        "(terminal|console|窗口).*(flash|popup|弹|闪)",
+        "cmd\\.exe|PowerShell window",
+        "弹窗.*(终端|命令行)|终端.*弹窗"
+      ],
+      "read": [
+        {
+          "target": "devrules/workflows/terminal-popup-diagnostics.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/rules/script-governance.md",
+          "activation": "always"
+        }
+      ],
+      "run": [
+        "devrules workspace terminal-audit"
+      ],
+      "workflows": [
+        {
+          "target": "terminal-popup-diagnostics.md",
+          "activation": "always",
+          "primary": true
+        }
+      ],
+      "ownership": "shared",
+      "governs": "device",
+      "activation": "conditional",
+      "enforcement": "advisory",
+      "decision_owner": "project",
+      "side_effects": "local"
+    },
+    {
+      "id": "macos-credential-prompts",
+      "event": "macos_credential_or_security_prompt",
+      "when": "A task may trigger, or the user reports, macOS Keychain, signing private-key, password, Allow/Deny, Always Allow, sudo, or privacy/security dialogs.",
+      "promptPatterns": [
+        "Keychain|钥匙串",
+        "codesign|notariz",
+        "(password|密码|授权|Allow).*(prompt|dialog|弹窗|弹出)",
+        "\\bsudo\\b"
+      ],
+      "commandPatterns": [
+        "\\bsecurity \\b",
+        "codesign",
+        "\\bsudo\\b",
+        "xcodebuild.*(archive|export)",
+        "notarytool"
+      ],
+      "read": [
+        {
+          "target": "devrules/workflows/macos-credential-prompts.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/rules/script-governance.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/templates/security/local-security.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.macos-credential-prompts.local-security",
+            "equals": true
+          },
+          "note": "devrules/templates/security/local-security.md when designing product credential storage"
+        }
+      ],
+      "run": [],
+      "workflows": [
+        {
+          "target": "macos-credential-prompts.md",
+          "activation": "always",
+          "primary": true
+        }
+      ],
+      "ownership": "shared",
+      "governs": "device",
+      "activation": "conditional",
+      "enforcement": "advisory",
+      "decision_owner": "project",
+      "side_effects": "local"
+    },
+    {
+      "id": "ios-simulator-ownership-handoff",
+      "event": "ios_simulator_foreground_or_handoff",
+      "when": "An Agent opens, switches, launches, visually verifies, or hands off an iOS Simulator; an External Display window appears; or multiple projects, UI tests, or workers may contend for the Simulator foreground.",
+      "promptPatterns": [
+        "[Ss]imulator|模拟器",
+        "External Display"
+      ],
+      "commandPatterns": [
+        "simctl"
+      ],
+      "read": [
+        {
+          "target": "devrules/rules/ios-simulator-ownership.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/workflows/ios-simulator-handoff.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/memory/project-profile.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/workflows/debug-root-cause.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ios-simulator-ownership-handoff.debug-root-cause",
+            "equals": true
+          },
+          "note": "devrules/workflows/debug-root-cause.md when the wrong window or repeated focus change is already occurring"
+        },
+        {
+          "target": "devrules/workflows/idle-resource-maintenance.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ios-simulator-ownership-handoff.idle-resource-maintenance",
+            "equals": true
+          },
+          "note": "devrules/workflows/idle-resource-maintenance.md when Booted count exceeds the soft target and sustained pressure or explicit lag is present"
+        }
+      ],
+      "run": [
+        "node devrules/scripts/idle-resource-maintenance.mjs pressure when Booted simulators exceed the soft target and sustained pressure or explicit lag is present; count alone is report-only; report in the observing task and never message another task without an explicit user instruction"
+      ],
+      "workflows": [
+        {
+          "target": "ios-simulator-handoff.md",
+          "activation": "always",
+          "primary": true
+        },
+        {
+          "target": "idle-resource-maintenance.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ios-simulator-ownership-handoff.idle-resource-maintenance",
+            "equals": true
+          },
+          "note": "idle-resource-maintenance.md when Booted count exceeds the soft target and sustained pressure or explicit lag is present"
+        },
+        {
+          "target": "debug-root-cause.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ios-simulator-ownership-handoff.debug-root-cause",
+            "equals": true
+          },
+          "note": "debug-root-cause.md when the wrong window or repeated focus change is already occurring"
+        }
+      ],
+      "ownership": "shared",
+      "governs": "device",
+      "activation": "conditional",
+      "enforcement": "advisory",
+      "decision_owner": "project",
+      "side_effects": "local"
+    },
+    {
+      "id": "ios-live-preview-ui-iteration",
+      "event": "ios_ui_or_live_preview_work",
+      "when": "An iOS app task involves UI changes, frontend interactions, live preview, hot reload, Xcode Canvas, Storybook/Widgetbook/catalog previews, simulator-preview mismatch, or iPhone/iPad visual verification.",
+      "promptPatterns": [
+        "Xcode Canvas|live preview|hot reload|热重载",
+        "(preview|预览).*(ios|iphone|ipad|swiftui)|((ios|iphone|ipad|swiftui).*(preview|预览))"
+      ],
+      "read": [
+        {
+          "target": "devrules/workflows/ios-live-preview-ui-iteration.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/rules/ios-simulator-ownership.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ios-live-preview-ui-iteration.ios-simulator-ownership",
+            "equals": true
+          },
+          "note": "devrules/rules/ios-simulator-ownership.md when Simulator runtime verification or handoff is involved"
+        },
+        {
+          "target": "devrules/workflows/ios-simulator-handoff.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ios-live-preview-ui-iteration.ios-simulator-handoff",
+            "equals": true
+          },
+          "note": "devrules/workflows/ios-simulator-handoff.md when Simulator runtime verification or handoff is involved"
+        },
+        {
+          "target": "devrules/memory/project-profile.md",
+          "activation": "always"
+        },
+        {
+          "target": "nearest README anchors for the iOS app root, screen, component, route, preview, story, or fixture files",
+          "activation": "explicit",
+          "condition": {
+            "fact": "route.ios-live-preview-ui-iteration.nearest-readme-anchors-for-the-ios-app-root-screen-component-route-preview-story-or-fixture-files",
+            "equals": true
+          }
+        }
+      ],
+      "run": [
+        "node devrules/scripts/ios-simulator-profile.mjs --profile devrules/memory/ios-simulator-device-profile.json before persistent Simulator runtime verification"
+      ],
+      "workflows": [
+        {
+          "target": "ios-live-preview-ui-iteration.md",
+          "activation": "always",
+          "primary": true
+        },
+        {
+          "target": "ios-simulator-handoff.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ios-live-preview-ui-iteration.ios-simulator-handoff",
+            "equals": true
+          },
+          "note": "ios-simulator-handoff.md when Simulator runtime verification or handoff is involved"
+        },
+        {
+          "target": "debug-root-cause.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ios-live-preview-ui-iteration.debug-root-cause",
+            "equals": true
+          },
+          "note": "debug-root-cause.md when preview, build, package, or hot-reload behavior fails"
+        },
+        {
+          "target": "design-change.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ios-live-preview-ui-iteration.design-change",
+            "equals": true
+          },
+          "note": "design-change.md when the task is a visual styling adjustment"
+        },
+        {
+          "target": "design-refactor-existing-project.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ios-live-preview-ui-iteration.design-refactor-existing-project",
+            "equals": true
+          },
+          "note": "design-refactor-existing-project.md when the task is a broad existing-UI refactor"
+        }
+      ],
+      "ownership": "shared",
+      "governs": "agent",
+      "activation": "conditional",
+      "enforcement": "advisory",
+      "decision_owner": "project",
+      "side_effects": "local"
+    },
+    {
+      "id": "i18n-multilingual-adaptation",
+      "event": "i18n_or_user_facing_content_change",
+      "when": "A project adds multilingual support, changes supported locales, localization resources, app language settings, user-facing source copy, bundled content templates, or asks to automate localization/content update detection.",
+      "promptPatterns": [
+        "\\bi18n\\b|\\bl10n\\b|localiz|多语言|本地化|翻译|locale"
+      ],
+      "pathPatterns": [
+        "**/locales/**",
+        "**/i18n/**",
+        "**/*.lproj/**",
+        "**/*.xcstrings"
+      ],
+      "read": [
+        {
+          "target": "devrules/workflows/i18n-multilingual-adaptation.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/templates/i18n/README.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/templates/i18n/localization-architecture.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/templates/i18n/hardcoded-scan.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.i18n-multilingual-adaptation.hardcoded-scan",
+            "equals": true
+          },
+          "note": "devrules/templates/i18n/hardcoded-scan.md when existing hardcoded user-facing copy must be migrated"
+        },
+        {
+          "target": "devrules/templates/i18n/content-change-detection.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.i18n-multilingual-adaptation.content-change-detection",
+            "equals": true
+          },
+          "note": "devrules/templates/i18n/content-change-detection.md when source copy or bundled content changes must be detected over time"
+        },
+        {
+          "target": "devrules/templates/i18n/translation-automation.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.i18n-multilingual-adaptation.translation-automation",
+            "equals": true
+          },
+          "note": "devrules/templates/i18n/translation-automation.md when translation generation or updates are requested"
+        },
+        {
+          "target": "devrules/templates/i18n/validation-self-heal.md",
+          "activation": "always"
+        }
+      ],
+      "run": [
+        "node devrules/scripts/i18n-maintenance.mjs scan --repo <repo>",
+        "node devrules/scripts/i18n-maintenance.mjs diff --repo <repo>",
+        "node devrules/scripts/i18n-maintenance.mjs plan --repo <repo> when source units were added or changed",
+        "node devrules/scripts/i18n-maintenance.mjs validate --repo <repo>"
+      ],
+      "workflows": [
+        {
+          "target": "i18n-multilingual-adaptation.md",
+          "activation": "always",
+          "primary": true
+        },
+        {
+          "target": "debug-root-cause.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.i18n-multilingual-adaptation.debug-root-cause",
+            "equals": true
+          },
+          "note": "debug-root-cause.md when i18n checks fail"
+        }
+      ],
+      "ownership": "shared",
+      "governs": "product",
+      "activation": "conditional",
+      "enforcement": "advisory",
+      "decision_owner": "project",
+      "side_effects": "local"
+    },
+    {
+      "id": "memory-distill",
+      "event": "after_decision_or_repeated_lesson",
+      "when": "A durable decision, repeated user preference, repeated failure, or reusable lesson appears.",
+      "promptPatterns": [
+        "记住|以后都|每次都|remember (this|that)|from now on",
+        "(durable|repeated) (decision|preference|lesson)"
+      ],
+      "read": [
+        {
+          "target": "devrules/rules/memory-governance.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/workflows/devrules-memory-maintenance.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/workflows/devrules-feedback-update.md",
+          "activation": "always"
+        }
+      ],
+      "run": [],
+      "workflows": [
+        {
+          "target": "devrules-feedback-update.md",
+          "activation": "always",
+          "primary": true
+        },
+        {
+          "target": "devrules-memory-maintenance.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.memory-distill.devrules-memory-maintenance",
+            "equals": true
+          },
+          "note": "devrules-memory-maintenance.md when compaction is needed"
+        }
+      ],
+      "ownership": "shared",
+      "governs": "agent",
+      "activation": "conditional",
+      "enforcement": "advisory",
+      "decision_owner": "project",
+      "side_effects": "local"
+    },
+    {
+      "id": "post-task-feedback",
+      "event": "after_task_feedback",
+      "when": "A completed task reveals a durable project convention, command, source-root fact, reusable lesson, or template improvement idea.",
+      "read": [
+        {
+          "target": "devrules/rules/memory-governance.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/workflows/devrules-feedback-update.md",
+          "activation": "always"
+        }
+      ],
+      "run": [],
+      "workflows": [
+        {
+          "target": "devrules-feedback-update.md",
+          "activation": "always",
+          "primary": true
+        }
+      ],
+      "ownership": "shared",
+      "governs": "agent",
+      "activation": "conditional",
+      "enforcement": "advisory",
+      "decision_owner": "project",
+      "side_effects": "local"
+    },
+    {
+      "id": "template-sync-propagation",
+      "event": "shared_template_changed",
+      "when": "A shared devrules template file changes, especially workflows, rules, templates, scripts, hooks, or root template files.",
+      "pathPatterns": [
+        "workflows/**",
+        "rules/**",
+        "templates/**",
+        "scripts/**",
+        "hooks/**",
+        "profiles/**",
+        "always-readme.md",
+        "design-readme.md"
+      ],
+      "read": [
+        {
+          "target": "devrules/workflows/devrules-template-promotion.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/rules/script-governance.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/scripts/README.md",
+          "activation": "always"
+        }
+      ],
+      "run": [
+        "devrules registry refresh --root <workspace> --apply",
+        "devrules workspace sync-template --registered",
+        "devrules workspace sync-template --registered --apply after reviewing dry-run copy/conflict summary",
+        "devrules batch readiness --root <workspace>"
+      ],
+      "workflows": [
+        {
+          "target": "devrules-template-promotion.md",
+          "activation": "always",
+          "primary": true
+        },
+        {
+          "target": "devrules-script-automation.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.template-sync-propagation.devrules-script-automation",
+            "equals": true
+          },
+          "note": "devrules-script-automation.md when scripts changed"
+        }
+      ],
+      "ownership": "shared",
+      "governs": "release",
+      "activation": "explicit",
+      "enforcement": "gate",
+      "decision_owner": "project",
+      "side_effects": "external"
+    },
+    {
+      "id": "workspace-initialization",
+      "event": "devrules_workspace_initialization",
+      "when": "The user asks to initialize or upgrade sibling Git repositories from a shared devrules template directory.",
+      "promptPatterns": [
+        "devrules (init|initiali[sz]e)",
+        "初始化.*devrules|devrules.*初始化",
+        "adopt (this|the) (system|template)"
+      ],
+      "read": [
+        {
+          "target": "devrules/workflows/devrules-initialize.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/templates/devrules/workspace-initialization.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/rules/system-maturity.md",
+          "activation": "always"
+        }
+      ],
+      "run": [
+        "devrules workspace readiness"
+      ],
+      "workflows": [
+        {
+          "target": "devrules-initialize.md",
+          "activation": "always",
+          "primary": true
+        }
+      ],
+      "ownership": "shared",
+      "governs": "agent",
+      "activation": "conditional",
+      "enforcement": "advisory",
+      "decision_owner": "project",
+      "side_effects": "local"
+    },
+    {
+      "id": "devrules-script-automation",
+      "event": "script_automation",
+      "when": "An Agent adds, changes, or runs scripts under devrules/scripts.",
+      "promptPatterns": [
+        "devrules.*(script|脚本|自动化)"
+      ],
+      "pathPatterns": [
+        "devrules/scripts/**"
+      ],
+      "read": [
+        {
+          "target": "devrules/rules/script-governance.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/workflows/devrules-script-automation.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/templates/devrules/script-automation.md",
+          "activation": "always"
+        }
+      ],
+      "run": [],
+      "workflows": [
+        {
+          "target": "devrules-script-automation.md",
+          "activation": "always",
+          "primary": true
+        }
+      ],
+      "ownership": "shared",
+      "governs": "agent",
+      "activation": "conditional",
+      "enforcement": "advisory",
+      "decision_owner": "project",
+      "side_effects": "local"
+    },
+    {
+      "id": "devrules-system-change",
+      "event": "devrules_system_change",
+      "when": "A task adds, changes, reclassifies, or reviews devrules rules, workflows, hooks, templates, or evolution suggestions collected across projects.",
+      "promptPatterns": [
+        "devrules.*(rule|workflow|hook|template|evolution|规则|工作流|模板)",
+        "(rule|workflow|hook|template|规则|工作流|模板).*devrules",
+        "evolution suggestion|模板演进|演进建议",
+        "(改|更新|新增|调整).*(工作流|规则|模板)系统"
+      ],
+      "pathPatterns": [
+        "devrules/rules/**",
+        "devrules/workflows/**",
+        "devrules/hooks/**",
+        "devrules/templates/**",
+        "devrules/memory/evolution-suggestions.md",
+        "devrules/always-readme.md"
+      ],
+      "read": [
+        {
+          "target": "devrules/workflows/devrules-evolution-review.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/rules/memory-governance.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/workflows/devrules-template-promotion.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.devrules-system-change.devrules-template-promotion",
+            "equals": true
+          },
+          "note": "devrules/workflows/devrules-template-promotion.md when an accepted improvement should graduate into the shared template"
+        }
+      ],
+      "run": [
+        "devrules evolution collect --root <parent> --dry-run during explicit template maintenance"
+      ],
+      "workflows": [
+        {
+          "target": "devrules-evolution-review.md",
+          "activation": "always",
+          "primary": true
+        },
+        {
+          "target": "devrules-template-promotion.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.devrules-system-change.devrules-template-promotion",
+            "equals": true
+          },
+          "note": "devrules-template-promotion.md when an accepted improvement should graduate into the shared template"
+        }
+      ],
+      "ownership": "shared",
+      "governs": "agent",
+      "activation": "conditional",
+      "enforcement": "advisory",
+      "decision_owner": "project",
+      "side_effects": "local"
+    },
+    {
+      "id": "codex-browser-automation-health",
+      "event": "codex_browser_automation_request_or_failure",
+      "when": "A Codex.app task requests Chrome/browser automation; the node_repl helper misses the macOS/Clash proxy; ambient Statsig networking delays page operations; or the browser session route becomes unavailable.",
+      "promptPatterns": [
+        "(Chrome|浏览器).*(automation|control|自动化|控制|操作|重试|失败|挂起|卡死|超时)",
+        "(automation|control|自动化|控制|操作|重试).*(Chrome|浏览器)",
+        "No (Codex|ChatGPT) browser route|tabID=undefined",
+        "(DOM|evaluate|screenshot|截图|页面读取).*(hang|timeout|SIGKILL|卡死|超时|系统终止)",
+        "(Chrome|浏览器|node_repl).*(proxy|network|Statsig|代理|外网|联网)"
+      ],
+      "commandPatterns": [
+        "agent\\.browsers|chrome\\.tabs|browser\\.tabs|codex-browser-network"
+      ],
+      "read": [
+        {
+          "target": "devrules/workflows/codex-browser-automation-fix.md",
+          "activation": "always"
+        }
+      ],
+      "run": [
+        "node devrules/scripts/codex-browser-network.mjs status --json",
+        "node devrules/scripts/codex-browser-network.mjs ensure --apply --json after confirmed proxy-inheritance drift and local-write authorization"
+      ],
+      "workflows": [
+        {
+          "target": "codex-browser-automation-fix.md",
+          "activation": "always",
+          "primary": true
+        }
+      ],
+      "ownership": "shared",
+      "governs": "agent",
+      "activation": "conditional",
+      "enforcement": "advisory",
+      "decision_owner": "project",
+      "side_effects": "local"
+    },
+    {
+      "id": "developer-service-configuration-governance",
+      "event": "external_developer_service_configuration",
+      "when": "A task creates, reuses, rotates, audits, connects, or removes developer-account apps, identifiers, credentials, products, integrations, or cross-project service configuration.",
+      "promptPatterns": [
+        "api ?key|credential|token rotation|密钥|凭证",
+        "开发者账号|developer account",
+        "bundle ?id|app ?identifier",
+        "service (account|binding)"
+      ],
+      "read": [
+        {
+          "target": "devrules/rules/developer-service-registry-governance.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/workflows/developer-service-configuration-governance.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/memory/developer-services-inventory.json",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.developer-service-configuration-governance.developer-services-inventory",
+            "equals": true
+          },
+          "note": "devrules/memory/developer-services-inventory.json when present"
+        },
+        {
+          "target": "devrules/memory/developer-services-inventory.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.developer-service-configuration-governance.developer-services-inventory",
+            "equals": true
+          },
+          "note": "devrules/memory/developer-services-inventory.md when present"
+        },
+        {
+          "target": "devrules/templates/ops/developer-services-inventory.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.developer-service-configuration-governance.developer-services-inventory",
+            "equals": true
+          },
+          "note": "devrules/templates/ops/developer-services-inventory.md when creating the inventory"
+        },
+        {
+          "target": "devrules/registry/developer-account-records/<account-record>.json",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.developer-service-configuration-governance.account-record",
+            "equals": true
+          },
+          "note": "devrules/registry/developer-account-records/<account-record>.json from the shared template registry"
+        },
+        {
+          "target": "devrules/templates/security/secrets-privacy.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.developer-service-configuration-governance.secrets-privacy",
+            "equals": true
+          },
+          "note": "devrules/templates/security/secrets-privacy.md when credentials or private keys are in scope"
+        }
+      ],
+      "run": [
+        "devrules services validate --root <workspace>",
+        "devrules services inspect --root <workspace> --project <project-id>",
+        "perform a bounded provider read-only identity check before any remote write"
+      ],
+      "workflows": [
+        {
+          "target": "developer-service-configuration-governance.md",
+          "activation": "always",
+          "primary": true
+        },
+        {
+          "target": "apple-app-store-launch.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.developer-service-configuration-governance.apple-app-store-launch",
+            "equals": true
+          },
+          "note": "apple-app-store-launch.md when Apple Developer or App Store Connect is in scope"
+        },
+        {
+          "target": "revenuecat-integration.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.developer-service-configuration-governance.revenuecat-integration",
+            "equals": true
+          },
+          "note": "revenuecat-integration.md when RevenueCat is in scope"
+        },
+        {
+          "target": "supabase-project-operations.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.developer-service-configuration-governance.supabase-project-operations",
+            "equals": true
+          },
+          "note": "supabase-project-operations.md when Supabase is in scope"
+        },
+        {
+          "target": "cloudflare-project-operations.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.developer-service-configuration-governance.cloudflare-project-operations",
+            "equals": true
+          },
+          "note": "cloudflare-project-operations.md when Cloudflare is in scope"
+        }
+      ],
+      "ownership": "shared",
+      "governs": "external_service",
+      "activation": "explicit",
+      "enforcement": "gate",
+      "decision_owner": "user",
+      "side_effects": "external"
+    },
+    {
+      "id": "supabase-project-operations",
+      "event": "supabase_project_or_database_work",
+      "when": "Supabase account/project selection, keys, database migrations, RLS, Auth, Storage, Edge Functions, cron, webhooks, backup, or environment deployment is in scope.",
+      "promptPatterns": [
+        "[Ss]upabase|\\bRLS\\b|edge function"
+      ],
+      "pathPatterns": [
+        "**/supabase/**"
+      ],
+      "commandPatterns": [
+        "\\bsupabase\\b"
+      ],
+      "read": [
+        {
+          "target": "devrules/workflows/developer-service-configuration-governance.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/workflows/service-project-operations-core.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/workflows/supabase-project-operations.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/workflows/supabase-edge-function-deploy.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.supabase-project-operations.supabase-edge-function-deploy",
+            "equals": true
+          },
+          "note": "devrules/workflows/supabase-edge-function-deploy.md when Edge Functions are in scope"
+        },
+        {
+          "target": "devrules/workflows/backup-maintenance.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.supabase-project-operations.backup-maintenance",
+            "equals": true
+          },
+          "note": "devrules/workflows/backup-maintenance.md when backup, restore, migration safety, or user data is in scope"
+        },
+        {
+          "target": "devrules/memory/developer-services-inventory.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.supabase-project-operations.developer-services-inventory",
+            "equals": true
+          },
+          "note": "devrules/memory/developer-services-inventory.md when present"
+        }
+      ],
+      "run": [],
+      "workflows": [
+        {
+          "target": "developer-service-configuration-governance.md",
+          "activation": "always"
+        },
+        {
+          "target": "supabase-project-operations.md",
+          "activation": "always",
+          "primary": true
+        },
+        {
+          "target": "supabase-edge-function-deploy.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.supabase-project-operations.supabase-edge-function-deploy",
+            "equals": true
+          },
+          "note": "supabase-edge-function-deploy.md when Edge Functions are in scope"
+        },
+        {
+          "target": "backup-maintenance.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.supabase-project-operations.backup-maintenance",
+            "equals": true
+          },
+          "note": "backup-maintenance.md when backup, restore, migration safety, or user data is in scope"
+        },
+        {
+          "target": "revenuecat-integration.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.supabase-project-operations.revenuecat-integration",
+            "equals": true
+          },
+          "note": "revenuecat-integration.md when RevenueCat web billing or webhooks are in scope"
+        }
+      ],
+      "ownership": "shared",
+      "governs": "external_service",
+      "activation": "explicit",
+      "enforcement": "gate",
+      "decision_owner": "user",
+      "side_effects": "external"
+    },
+    {
+      "id": "cloudflare-project-operations",
+      "event": "cloudflare_account_resource_or_deployment_work",
+      "when": "Cloudflare account/token selection, Workers, Pages, domains, routes, Wrangler configuration, variables/secrets, D1, R2, KV, Queues, Durable Objects, Vectorize, cron, bindings, migration, deployment, or rollback is in scope.",
+      "promptPatterns": [
+        "[Cc]loudflare|[Ww]rangler",
+        "\\b(Workers|Pages|D1|R2|KV|Durable Objects?|Vectorize|Queues)\\b"
+      ],
+      "pathPatterns": [
+        "**/wrangler.toml",
+        "**/wrangler.json",
+        "**/wrangler.jsonc"
+      ],
+      "commandPatterns": [
+        "\\bwrangler\\b"
+      ],
+      "read": [
+        {
+          "target": "devrules/workflows/developer-service-configuration-governance.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/workflows/service-project-operations-core.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/workflows/cloudflare-project-operations.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/workflows/backup-maintenance.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.cloudflare-project-operations.backup-maintenance",
+            "equals": true
+          },
+          "note": "devrules/workflows/backup-maintenance.md when stateful data recovery or risky migrations are in scope"
+        },
+        {
+          "target": "devrules/memory/developer-services-inventory.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.cloudflare-project-operations.developer-services-inventory",
+            "equals": true
+          },
+          "note": "devrules/memory/developer-services-inventory.md when present"
+        }
+      ],
+      "run": [],
+      "workflows": [
+        {
+          "target": "developer-service-configuration-governance.md",
+          "activation": "always"
+        },
+        {
+          "target": "cloudflare-project-operations.md",
+          "activation": "always",
+          "primary": true
+        },
+        {
+          "target": "backup-maintenance.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.cloudflare-project-operations.backup-maintenance",
+            "equals": true
+          },
+          "note": "backup-maintenance.md when stateful data recovery or risky migrations are in scope"
+        },
+        {
+          "target": "revenuecat-integration.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.cloudflare-project-operations.revenuecat-integration",
+            "equals": true
+          },
+          "note": "revenuecat-integration.md when RevenueCat web billing or webhooks are in scope"
+        }
+      ],
+      "ownership": "shared",
+      "governs": "external_service",
+      "activation": "explicit",
+      "enforcement": "gate",
+      "decision_owner": "user",
+      "side_effects": "external"
+    },
+    {
+      "id": "apple-app-store-launch",
+      "event": "apple_app_store_launch_request",
+      "when": "The user asks for Apple App Store launch, Bundle ID, Apple Developer identifiers, TestFlight, App Store Connect, capabilities, ASO/AEO, screenshots, review notes, IAP/subscriptions, or mainland China APP-filing/network-resource compliance concerns.",
+      "promptPatterns": [
+        "App Store|TestFlight|App Store Connect",
+        "上架|审核|应用商店",
+        "\\bASO\\b|\\bAEO\\b",
+        "IAP|内购|in-app purchase"
+      ],
+      "read": [
+        {
+          "target": "devrules/rules/ios-account-data-model.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.apple-app-store-launch.ios-account-data-model",
+            "equals": true
+          },
+          "note": "devrules/rules/ios-account-data-model.md when persistence, iCloud/CloudKit, or login is in scope"
+        },
+        {
+          "target": "devrules/workflows/ios-account-data-architecture.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.apple-app-store-launch.ios-account-data-architecture",
+            "equals": true
+          },
+          "note": "devrules/workflows/ios-account-data-architecture.md when the current account/data decision is missing or stale"
+        },
+        {
+          "target": "project-local approved iOS account/data decision artifact when present, using the single-app path or applicable app-id path",
+          "activation": "explicit",
+          "condition": {
+            "fact": "route.apple-app-store-launch.data-decision-artifact-when-present-using-the-single-app-path-or-applicable-app-id-path",
+            "equals": true
+          }
+        },
+        {
+          "target": "devrules/workflows/developer-service-configuration-governance.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.apple-app-store-launch.developer-service-configuration-governance",
+            "equals": true
+          },
+          "note": "devrules/workflows/developer-service-configuration-governance.md when developer-account identifiers, credentials, products, or integrations are created or changed"
+        },
+        {
+          "target": "devrules/workflows/apple-app-store-launch.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/workflows/release.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.apple-app-store-launch.release",
+            "equals": true
+          },
+          "note": "devrules/workflows/release.md when packaging or build readiness is also requested"
+        },
+        {
+          "target": "devrules/workflows/seo-optimization.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.apple-app-store-launch.seo-optimization",
+            "equals": true
+          },
+          "note": "devrules/workflows/seo-optimization.md when web/search content surfaces are also requested"
+        }
+      ],
+      "run": [],
+      "workflows": [
+        {
+          "target": "ios-account-data-architecture.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.apple-app-store-launch.ios-account-data-architecture",
+            "equals": true
+          },
+          "note": "ios-account-data-architecture.md before App Store capability decisions when the current account/data decision is missing or stale"
+        },
+        {
+          "target": "developer-service-configuration-governance.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.apple-app-store-launch.developer-service-configuration-governance",
+            "equals": true
+          },
+          "note": "developer-service-configuration-governance.md when developer-account identifiers, credentials, products, or integrations are created or changed"
+        },
+        {
+          "target": "apple-app-store-launch.md",
+          "activation": "always",
+          "primary": true
+        },
+        {
+          "target": "release.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.apple-app-store-launch.release",
+            "equals": true
+          },
+          "note": "release.md when packaging or build readiness is also requested"
+        },
+        {
+          "target": "seo-optimization.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.apple-app-store-launch.seo-optimization",
+            "equals": true
+          },
+          "note": "seo-optimization.md when web/search content surfaces are also requested"
+        }
+      ],
+      "ownership": "shared",
+      "governs": "external_service",
+      "activation": "explicit",
+      "enforcement": "gate",
+      "decision_owner": "user",
+      "side_effects": "external"
+    },
+    {
+      "id": "revenuecat-integration",
+      "event": "payment_or_subscription_work",
+      "when": "RevenueCat, subscriptions, premium gates, paywalls, in-app purchases, monetization, RevenueCat MCP, store credentials, or purchase QA are in scope.",
+      "promptPatterns": [
+        "RevenueCat",
+        "subscription|订阅|paywall|付费墙",
+        "premium (gate|feature)|monetiz"
+      ],
+      "read": [
+        {
+          "target": "devrules/rules/ios-account-data-model.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.revenuecat-integration.ios-account-data-model",
+            "equals": true
+          },
+          "note": "devrules/rules/ios-account-data-model.md when RevenueCat is added to an iOS/iPadOS app"
+        },
+        {
+          "target": "devrules/workflows/ios-account-data-architecture.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.revenuecat-integration.ios-account-data-architecture",
+            "equals": true
+          },
+          "note": "devrules/workflows/ios-account-data-architecture.md when an iOS/iPadOS account/data decision is missing or stale"
+        },
+        {
+          "target": "devrules/templates/ios-account-data-decision.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.revenuecat-integration.ios-account-data-decision",
+            "equals": true
+          },
+          "note": "devrules/templates/ios-account-data-decision.md when an iOS/iPadOS account/data decision is missing or stale"
+        },
+        {
+          "target": "devrules/workflows/developer-service-configuration-governance.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/workflows/revenuecat-integration.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/workflows/supabase-project-operations.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.revenuecat-integration.supabase-project-operations",
+            "equals": true
+          },
+          "note": "devrules/workflows/supabase-project-operations.md when a Supabase web backend is in scope"
+        },
+        {
+          "target": "devrules/workflows/cloudflare-project-operations.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.revenuecat-integration.cloudflare-project-operations",
+            "equals": true
+          },
+          "note": "devrules/workflows/cloudflare-project-operations.md when a Cloudflare web backend is in scope"
+        },
+        {
+          "target": "devrules/workflows/apple-app-store-launch.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.revenuecat-integration.apple-app-store-launch",
+            "equals": true
+          },
+          "note": "devrules/workflows/apple-app-store-launch.md when Apple App Store Connect, Bundle ID, StoreKit, TestFlight, Universal Purchase, or App Store credentials are in scope"
+        }
+      ],
+      "run": [],
+      "workflows": [
+        {
+          "target": "ios-account-data-architecture.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.revenuecat-integration.ios-account-data-architecture",
+            "equals": true
+          },
+          "note": "ios-account-data-architecture.md before selecting RevenueCat App User ID behavior for an iOS/iPadOS app when the account/data decision is missing or stale"
+        },
+        {
+          "target": "developer-service-configuration-governance.md",
+          "activation": "always"
+        },
+        {
+          "target": "revenuecat-integration.md",
+          "activation": "always",
+          "primary": true
+        },
+        {
+          "target": "supabase-project-operations.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.revenuecat-integration.supabase-project-operations",
+            "equals": true
+          },
+          "note": "supabase-project-operations.md when a Supabase web backend is in scope"
+        },
+        {
+          "target": "cloudflare-project-operations.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.revenuecat-integration.cloudflare-project-operations",
+            "equals": true
+          },
+          "note": "cloudflare-project-operations.md when a Cloudflare web backend is in scope"
+        },
+        {
+          "target": "apple-app-store-launch.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.revenuecat-integration.apple-app-store-launch",
+            "equals": true
+          },
+          "note": "apple-app-store-launch.md when Apple-specific store setup is in scope"
+        }
+      ],
+      "ownership": "shared",
+      "governs": "external_service",
+      "activation": "explicit",
+      "enforcement": "gate",
+      "decision_owner": "user",
+      "side_effects": "external"
+    },
+    {
+      "id": "production-change-governance",
+      "event": "released_state_or_contract_change",
+      "when": "A released product change affects persistent data, schema/file format, API/event/import-export contracts, deployed client compatibility, permissions, billing, migration, rollout, rollback, or recovery.",
+      "promptPatterns": [
+        "migration|迁移",
+        "schema (change|变更)",
+        "(production|线上|生产环境).*(change|变更|发布)",
+        "roll(out|back)|回滚"
+      ],
+      "pathPatterns": [
+        "**/migrations/**",
+        "**/prisma/schema.prisma"
+      ],
+      "read": [
+        {
+          "target": "devrules/rules/production-change-governance.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/workflows/production-change.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/templates/ops/production-change-plan.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/templates/ops/backup-export-restore.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.production-change-governance.backup-export-restore",
+            "equals": true
+          },
+          "note": "devrules/templates/ops/backup-export-restore.md when persistent state changes"
+        },
+        {
+          "target": "devrules/templates/ops/observability-diagnostics.md",
+          "activation": "always"
+        },
+        {
+          "target": "nearest project data, contract, release, and platform README anchors",
+          "activation": "explicit",
+          "condition": {
+            "fact": "route.production-change-governance.nearest-project-data-contract-release-and-platform-readme-anchors",
+            "equals": true
+          }
+        }
+      ],
+      "run": [
+        "node devrules/scripts/production-readiness.mjs --plan <plan.json> --stage design before implementation",
+        "node devrules/scripts/production-readiness.mjs --plan <plan.json> --stage preflight before production exposure",
+        "node devrules/scripts/production-readiness.mjs --plan <plan.json> --stage post-release after monitoring and reconciliation"
+      ],
+      "workflows": [
+        {
+          "target": "architecture-change-review.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.production-change-governance.architecture-change-review",
+            "equals": true
+          },
+          "note": "architecture-change-review.md when system boundaries change"
+        },
+        {
+          "target": "production-change.md",
+          "activation": "always",
+          "primary": true
+        },
+        {
+          "target": "backup-maintenance.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.production-change-governance.backup-maintenance",
+            "equals": true
+          },
+          "note": "backup-maintenance.md when persistent state or restore behavior changes"
+        },
+        {
+          "target": "release.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.production-change-governance.release",
+            "equals": true
+          },
+          "note": "release.md for packaging or deployment"
+        },
+        {
+          "target": "prisma-database.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.production-change-governance.prisma-database",
+            "equals": true
+          },
+          "note": "prisma-database.md when the change touches a Prisma schema or migration"
+        }
+      ],
+      "ownership": "shared",
+      "governs": "release",
+      "activation": "explicit",
+      "enforcement": "gate",
+      "decision_owner": "project",
+      "side_effects": "external"
+    },
+    {
+      "id": "release-readiness",
+      "event": "release_request",
+      "when": "The user asks for release, packaging, publishing, deployment, or changelog work.",
+      "promptPatterns": [
+        "release|发布|打包|publish",
+        "deploy|部署",
+        "changelog"
+      ],
+      "read": [
+        {
+          "target": "devrules/workflows/release.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/templates/ops/release-readiness.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/rules/production-change-governance.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.release-readiness.production-change-governance",
+            "equals": true
+          },
+          "note": "devrules/rules/production-change-governance.md when released state, contracts, clients, migration, or recovery are affected"
+        },
+        {
+          "target": "devrules/workflows/production-change.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.release-readiness.production-change",
+            "equals": true
+          },
+          "note": "devrules/workflows/production-change.md when released state, contracts, clients, migration, or recovery are affected"
+        },
+        {
+          "target": "devrules/templates/ops/production-change-plan.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.release-readiness.production-change-plan",
+            "equals": true
+          },
+          "note": "devrules/templates/ops/production-change-plan.md when the production change workflow is triggered"
+        }
+      ],
+      "run": [
+        "node devrules/scripts/production-readiness.mjs --plan <plan.json> --stage preflight when the production change workflow is triggered"
+      ],
+      "workflows": [
+        {
+          "target": "release.md",
+          "activation": "always",
+          "primary": true
+        },
+        {
+          "target": "production-change.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.release-readiness.production-change",
+            "equals": true
+          },
+          "note": "production-change.md when released state, contracts, clients, migration, or recovery are affected"
+        }
+      ],
+      "ownership": "shared",
+      "governs": "release",
+      "activation": "explicit",
+      "enforcement": "gate",
+      "decision_owner": "project",
+      "side_effects": "external"
+    },
+    {
+      "id": "landing-page",
+      "event": "landing_page_work",
+      "when": "A landing page, marketing page, conversion page, launch page, campaign page, or product-site homepage needs copy, creation, conversion optimization, or structural refactor.",
+      "promptPatterns": [
+        "landing[ -]?page|marketing page|conversion page|launch page|campaign page|product (site|website) homepage",
+        "落地页|营销页|转化页|发布页|活动页|产品官网首页|官网首页"
+      ],
+      "pathPatterns": [
+        "**/landing-page.*",
+        "**/landing-page/**",
+        "**/landing/**",
+        "**/marketing-site/**"
+      ],
+      "read": [
+        {
+          "target": "devrules/rules/landing-page.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/workflows/landing-page.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/templates/landing-page/README.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/templates/landing-page/brief.md",
+          "activation": "always"
+        },
+        {
+          "target": "the selected template under devrules/templates/landing-page/",
+          "activation": "explicit",
+          "condition": {
+            "fact": "route.landing-page.context-5",
+            "equals": true
+          }
+        },
+        {
+          "target": "DESIGN.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.landing-page.design",
+            "equals": true
+          },
+          "note": "the target project's PRD, product facts, current landing page, DESIGN.md, analytics contract, and publishable evidence"
+        }
+      ],
+      "run": [
+        "the target repository's native formatter, lint, typecheck, tests, build, design, browser, SEO, and analytics checks in proportion to the changed boundary"
+      ],
+      "workflows": [
+        {
+          "target": "landing-page.md",
+          "activation": "always",
+          "primary": true
+        },
+        {
+          "target": "product-architecture-review.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.landing-page.product-architecture-review",
+            "equals": true
+          },
+          "note": "product-architecture-review.md only when the landing-page work changes capabilities, navigation, broad journeys, ownership, or visible product states"
+        },
+        {
+          "target": "design-read.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.landing-page.design-read",
+            "equals": true
+          },
+          "note": "design-read.md and design-refactor-existing-project.md for structural refactor"
+        },
+        {
+          "target": "design-new-page.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.landing-page.design-new-page",
+            "equals": true
+          },
+          "note": "design-read.md and design-new-page.md for a new page"
+        },
+        {
+          "target": "design-refactor-existing-project.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.landing-page.design-refactor-existing-project",
+            "equals": true
+          },
+          "note": "design-read.md and design-refactor-existing-project.md for structural refactor"
+        },
+        {
+          "target": "design-change.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.landing-page.design-change",
+            "equals": true
+          },
+          "note": "design-change.md for quick_copy work that preserves structure and product facts"
+        },
+        {
+          "target": "seo-optimization.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.landing-page.seo-optimization",
+            "equals": true
+          },
+          "note": "seo-optimization.md for public discoverability and metadata"
+        }
+      ],
+      "ownership": "shared",
+      "governs": "product",
+      "activation": "conditional",
+      "enforcement": "advisory",
+      "decision_owner": "project",
+      "side_effects": "local"
+    },
+    {
+      "id": "ui-design-standards",
+      "event": "ui_design_work",
+      "when": "UI components, pages, styling, theming, or visual changes are in scope; or the user asks to establish, consolidate, audit, optimize, refactor, extract, save, apply, or replicate a unified design system or named style.",
+      "promptPatterns": [
+        "\\bUI\\b|界面|页面|样式|组件|风格",
+        "design (system|token)|设计(系统|规范|风格)",
+        "restyle|redesign|重构页面|视觉"
+      ],
+      "pathPatterns": [
+        "**/DESIGN.md",
+        "**/design.config.json",
+        "**/tailwind.config.*",
+        "**/*.css",
+        "**/*.scss"
+      ],
+      "read": [
+        {
+          "target": "devrules/design-readme.md",
+          "activation": "always"
+        },
+        {
+          "target": "DESIGN.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ui-design-standards.design",
+            "equals": true
+          },
+          "note": "devrules/DESIGN.example.md when authoring a new DESIGN.md"
+        },
+        {
+          "target": "devrules/rules/design-agent-rules.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/workflows/product-architecture-review.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ui-design-standards.product-architecture-review",
+            "equals": true
+          },
+          "note": "devrules/workflows/product-architecture-review.md and devrules/templates/product-architecture-brief.md when product-gate applicability is required"
+        },
+        {
+          "target": "devrules/templates/product-architecture-brief.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ui-design-standards.product-architecture-brief",
+            "equals": true
+          },
+          "note": "devrules/workflows/product-architecture-review.md and devrules/templates/product-architecture-brief.md when product-gate applicability is required"
+        },
+        {
+          "target": "devrules/templates/design-read.md",
+          "activation": "always"
+        },
+        {
+          "target": "devrules/templates/design-product-brief.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ui-design-standards.design-product-brief",
+            "equals": true
+          },
+          "note": "devrules/templates/design-product-brief.md only as a compatibility pointer for existing references"
+        },
+        {
+          "target": "devrules/templates/design-page-spec.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ui-design-standards.design-page-spec",
+            "equals": true
+          },
+          "note": "devrules/templates/design-page-spec.md before refactoring a specific screen"
+        },
+        {
+          "target": "devrules/DESIGN.example.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ui-design-standards.design-example",
+            "equals": true
+          },
+          "note": "devrules/DESIGN.example.md when authoring a new DESIGN.md"
+        },
+        {
+          "target": "devrules/design-styles/README.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ui-design-standards.readme",
+            "equals": true
+          },
+          "note": "devrules/design-styles/README.md and the selected style pack when extracting, publishing, discovering, or applying a named style"
+        }
+      ],
+      "run": [
+        "npm run design:guard when the repository has the design scripts wired",
+        "npm run design:check when DESIGN.md or generated token artifacts changed"
+      ],
+      "workflows": [
+        {
+          "target": "product-architecture-review.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ui-design-standards.product-architecture-review",
+            "equals": true
+          },
+          "note": "product-architecture-review.md before Design Read when user-facing capabilities, domains, navigation, broad journeys, ownership, or visible states change"
+        },
+        {
+          "target": "design-read.md",
+          "activation": "always",
+          "primary": true
+        },
+        {
+          "target": "design-init-new-project.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ui-design-standards.design-init-new-project",
+            "equals": true
+          },
+          "note": "design-init-new-project.md when bootstrapping the design system in a new repository"
+        },
+        {
+          "target": "design-adopt-existing-project.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ui-design-standards.design-adopt-existing-project",
+            "equals": true
+          },
+          "note": "design-adopt-existing-project.md when consolidating scattered styles in an existing repository"
+        },
+        {
+          "target": "design-refactor-existing-project.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ui-design-standards.design-refactor-existing-project",
+            "equals": true
+          },
+          "note": "design-refactor-existing-project.md when optimizing or refactoring existing UI across screens/phases"
+        },
+        {
+          "target": "design-new-component.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ui-design-standards.design-new-component",
+            "equals": true
+          },
+          "note": "design-new-component.md when a new UI component or variant is needed"
+        },
+        {
+          "target": "design-new-page.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ui-design-standards.design-new-page",
+            "equals": true
+          },
+          "note": "design-new-page.md when a new page or major view is needed"
+        },
+        {
+          "target": "design-change.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ui-design-standards.design-change",
+            "equals": true
+          },
+          "note": "design-change.md when visual styling changes are requested"
+        },
+        {
+          "target": "design-audit.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ui-design-standards.design-audit",
+            "equals": true
+          },
+          "note": "design-audit.md when design drift, AI-flavored copy, or exemption cleanup is due"
+        },
+        {
+          "target": "design-extract-style.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ui-design-standards.design-extract-style",
+            "equals": true
+          },
+          "note": "design-extract-style.md when existing project code should become a reusable named style"
+        },
+        {
+          "target": "design-apply-style.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ui-design-standards.design-apply-style",
+            "equals": true
+          },
+          "note": "design-apply-style.md when applying a named shared style to a repository"
+        },
+        {
+          "target": "design-port-to-new-project.md",
+          "activation": "conditional",
+          "condition": {
+            "fact": "route.ui-design-standards.design-port-to-new-project",
+            "equals": true
+          },
+          "note": "design-port-to-new-project.md when directly forking one source project's complete UI system"
+        }
+      ],
+      "ownership": "shared",
+      "governs": "product",
+      "activation": "conditional",
+      "enforcement": "advisory",
+      "decision_owner": "project",
+      "side_effects": "local"
+    }
+  ],
+  "ownershipSchema": {
+    "shared": "Portable system owned by the canonical template. Ownership does not imply always-on activation.",
+    "seed": "Reusable starter system. Template seeds projects, then project edits stay local unless the user requests promotion.",
+    "local": "Project-owned system. Keep it in the project instance unless the user explicitly reclassifies it."
+  }
+}
