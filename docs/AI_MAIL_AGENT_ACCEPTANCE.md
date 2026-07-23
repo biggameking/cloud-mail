@@ -95,3 +95,12 @@
 - 只读 D1 查询元数据：`rows_written=0`、`changed_db=false`。HTTPS、安全头、系统/投递开关、规则范围、失败/重试/超期门禁均通过。
 - Cloudflare Worker 当前部署/版本元数据检查部分阻塞：`wrangler deployments status` 连续三次、`wrangler versions list` 一次均因代理链路 fetch 超时失败；同一时段生产 HTTPS 与 D1 API 可用，未发现授权失效证据。为避免把 2026-07-18 的 Worker v30/版本 ID 当作当前证据，本日不宣称版本与绑定复核完成。
 - 结论：第 4 天业务与安全只读门禁通过，但 Worker 当前版本与绑定复核因 Cloudflare 元数据端点网络超时而部分阻塞。未发现代码缺陷，因此未运行测试、前端构建、dry-run，也未提交、推送或部署；第 7 天 OSV Scanner 官方 SHA-256 校验与双锁文件复扫仍按计划保留。
+
+## 2026-07-20（第 5 天）生产只读观察
+
+- 最小观察 JSON：`{"observedAt":"2026-07-20T09:03:20.6528504Z","passed":true,"failures":[],"httpsStatus":200,"securityHeaders":5,"systemEnabled":1,"deliveryEnabled":1,"activeMonitors":1,"nextRunAt":"2026-07-21T00:00:00.000Z","duplicatePeriods":0,"unauthorizedSources":0,"exhaustedDeliveries":0,"failedRuns24h":0,"validationFailures24h":0,"providerRetries24h":0,"overdueMonitors":0,"callsToday":0,"inputTokensToday":0,"outputTokensToday":0,"neuronsToday":0}`。
+- 最近 24 小时运行：成功 0、部分 0、跳过 1；积压峰值与总量均为 0。当日 AI 调用、输入/输出 Token 与 Neurons 均为 0，未产生 AI 推理成本。
+- 调度与幂等：唯一活动规则精确匹配上海时间 08:00，下一次运行是 2026-07-21 08:00；重复周期 0、运行周期结束后产生的来源 0。无新增合格邮件时本轮仅跳过，未重复推理。
+- 正常邮件主链路：活动邮箱 3 个，最近 24 小时新增有效邮件 0，孤立有效邮件 0；抽检只读取计数与关系元数据，未读取邮件正文、附件或个人信息。
+- Cloudflare Worker 当前为 v30，100% 流量指向版本 `03afc174-acd6-4c2c-8d9c-20746f05ad7f`；AI、D1、KV、R2、Assets、邮件发送与所需 Secret 绑定存在，预算保持每天 2 次、500000 输入 Token、20000 输出 Token、5000 Neurons。只读 D1 查询元数据为 `rows_written=0`、`changed_db=false`。
+- 结论：第 5 天验收通过，第 4 天 Cloudflare 元数据端点超时阻塞已解除。未发现需要修复、测试、构建、dry-run、提交、部署或推送的缺陷；第 7 天 OSV Scanner 官方 SHA-256 校验与双锁文件复扫仍按计划保留。
